@@ -18,13 +18,13 @@ pip install -r requirements.txt
    
    - **Option 2**: Manually create a `.env` file in the `backend` directory:
      ```
-     DATABASE_URL=postgresql://username:password@localhost:5432/promptvault-db
+     DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault
      INIT_DB_ON_STARTUP=false
      SECRET_KEY=your-secret-key-here
      ```
    - **Important**: 
      - Update `DATABASE_URL` with your actual PostgreSQL credentials
-     - Make sure the database name matches your Docker container (default: `promptvault-db`)
+     - Make sure the database name matches your Docker container (default: `promptvault`)
      - By default, `INIT_DB_ON_STARTUP=false` to prevent startup errors if database is not configured
 
 3. Initialize database tables:

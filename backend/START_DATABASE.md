@@ -2,52 +2,45 @@
 
 O erro "Database connection failed" indica que o PostgreSQL não está rodando.
 
-## Opção 1: Docker (Recomendado)
+## Opção 1: Docker Compose (Recomendado)
 
-Se você está usando Docker, inicie o container PostgreSQL:
+Use o arquivo `docker-compose.yml` na raiz do projeto:
 
 ```bash
-# Iniciar PostgreSQL com Docker
+# Iniciar PostgreSQL com pgvector
+docker-compose up -d
+
+# Verificar se está rodando
+docker-compose ps
+
+# Ver logs
+docker-compose logs -f db
+```
+
+O docker-compose.yml já está configurado com:
+- Imagem: `pgvector/pgvector:pg16` (PostgreSQL 16 com pgvector)
+- Database: `promptvault`
+- Usuário: `postgres`
+- Senha: `postgres`
+
+## Opção 2: Docker Direto
+
+Se preferir usar Docker diretamente:
+
+```bash
+# Iniciar PostgreSQL com pgvector
 docker run --name promptvault-postgres \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=promptvault-db \
+  -e POSTGRES_DB=promptvault \
   -p 5432:5432 \
-  -d postgres:15
+  -d pgvector/pgvector:pg16
 
 # Verificar se está rodando
 docker ps
 
 # Ver logs
 docker logs promptvault-postgres
-```
-
-## Opção 2: Docker Compose (Alternativa)
-
-Crie um arquivo `docker-compose.yml` na raiz do projeto:
-
-```yaml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:15
-    container_name: promptvault-postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: promptvault-db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-```
-
-Depois execute:
-```bash
-docker-compose up -d
 ```
 
 ## Opção 3: PostgreSQL Local
@@ -90,7 +83,7 @@ python init_db.py
 Certifique-se de que o `.env` em `backend/.env` está configurado corretamente:
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault-db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault
 ```
 
 Ajuste usuário, senha e nome do banco conforme necessário.

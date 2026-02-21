@@ -13,12 +13,16 @@ def check_and_create_db():
     print(f"Checking connection to: {db_url.split('@')[1] if '@' in db_url else db_url}")
     
     # Extract database name
-    if '/promptvault-db' in db_url:
-        db_name = 'promptvault-db'
+    if '/promptvault' in db_url:
+        # Support both 'promptvault' and 'promptvault-db'
+        if '/promptvault-db' in db_url:
+            db_name = 'promptvault-db'
+        else:
+            db_name = 'promptvault'
         # Get base URL without database name
         base_url = db_url.rsplit('/', 1)[0] + '/postgres'  # Connect to default 'postgres' db
     else:
-        print("❌ Database name should be 'promptvault-db'")
+        print("❌ Database name should be 'promptvault' or 'promptvault-db'")
         return False
     
     try:

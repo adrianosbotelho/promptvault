@@ -85,7 +85,7 @@ promptvault/
    ```
    Or manually create `.env` file:
    ```env
-   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault-db
+   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault
    INIT_DB_ON_STARTUP=false
    SECRET_KEY=your-secret-key-here
    OPENAI_API_KEY=your-openai-api-key
@@ -98,7 +98,7 @@ promptvault/
    docker run --name promptvault-postgres \
      -e POSTGRES_USER=postgres \
      -e POSTGRES_PASSWORD=postgres \
-     -e POSTGRES_DB=promptvault-db \
+     -e POSTGRES_DB=promptvault \
      -p 5432:5432 \
      -d postgres:15
    ```
@@ -226,7 +226,7 @@ python backend/init_db.py
 ### Backend (.env)
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/promptvault-db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault
 INIT_DB_ON_STARTUP=false
 SECRET_KEY=your-secret-key-here
 OPENAI_API_KEY=your-openai-api-key

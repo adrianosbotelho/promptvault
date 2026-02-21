@@ -36,11 +36,56 @@ def init_db() -> bool:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         
+        logger.info("Enabling pgvector extension...")
+        # Enable pgvector extension if not already enabled
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                conn.commit()
+                logger.info("pgvector extension enabled successfully")
+            except Exception as e:
+                logger.warning(f"Could not enable pgvector extension: {e}")
+                logger.warning("Continuing without pgvector. Make sure pgvector is installed in PostgreSQL.")
+        
         logger.info("Creating database tables from Base.metadata...")
         
         # Create all tables defined in models
         # This uses Base.metadata which contains all table definitions
         Base.metadata.create_all(bind=engine)
+        
+        # Convert embedding column to vector type if pgvector is available
+        logger.info("Configuring embedding column with pgvector...")
+        with engine.connect() as conn:
+            try:
+                # Check if column exists and is not already vector type
+                result = conn.execute(text("""
+                    SELECT data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'prompt_versions' 
+                    AND column_name = 'embedding'
+                """))
+                column_info = result.fetchone()
+                
+                if column_info and column_info[0] != 'USER-DEFINED':
+                    # Convert ARRAY to vector type
+                    conn.execute(text("""
+                        ALTER TABLE prompt_versions 
+                        ALTER COLUMN embedding TYPE vector(1536) 
+                        USING embedding::vector(1536)
+                    """))
+                    conn.commit()
+                    logger.info("Embedding column converted to vector(1536)")
+                elif not column_info:
+                    # Add vector column if it doesn't exist
+                    conn.execute(text("""
+                        ALTER TABLE prompt_versions 
+                        ADD COLUMN embedding vector(1536)
+                    """))
+                    conn.commit()
+                    logger.info("Embedding column added as vector(1536)")
+            except Exception as e:
+                logger.warning(f"Could not configure vector column: {e}")
+                logger.warning("Embedding column will use ARRAY type. Install pgvector for full support.")
         
         # Verify tables were created
         inspector = inspect(engine)

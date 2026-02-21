@@ -51,6 +51,7 @@ class PromptVersionResponse(BaseModel):
     id: int
     version: int
     content: str
+    embedding: Optional[List[float]] = None  # Vector embedding with dimension 1536
     created_at: datetime
     
     class Config:

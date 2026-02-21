@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, REAL
 from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from datetime import datetime
 
 Base = declarative_base()
@@ -49,6 +50,11 @@ class PromptVersion(Base):
     )
     version = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
+    embedding = Column(
+        PG_ARRAY(REAL),
+        nullable=True,
+        comment="Vector embedding with dimension 1536 using pgvector"
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Many-to-one: PromptVersion -> Prompt

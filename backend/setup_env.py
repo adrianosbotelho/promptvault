@@ -30,7 +30,7 @@ def create_env_file():
     db_password = input("Database password [postgres]: ").strip() or "postgres"
     db_host = input("Database host [localhost]: ").strip() or "localhost"
     db_port = input("Database port [5432]: ").strip() or "5432"
-    db_name = input("Database name [promptvault-db]: ").strip() or "promptvault-db"
+    db_name = input("Database name [promptvault]: ").strip() or "promptvault"
     
     # Build DATABASE_URL
     database_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
