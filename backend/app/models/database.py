@@ -1,7 +1,9 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, REAL
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, REAL, JSON, Enum as SQLEnum
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from datetime import datetime
+
+from app.core.categories import PromptCategory, PromptTag
 
 Base = declarative_base()
 
@@ -24,6 +26,17 @@ class Prompt(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(Text, nullable=True)
+    category = Column(
+        SQLEnum(PromptCategory),
+        nullable=True,
+        index=True,
+        comment="Category of the prompt (delphi, oracle, arquitetura)"
+    )
+    tags = Column(
+        PG_ARRAY(String),
+        nullable=True,
+        comment="Array of tags for the prompt"
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -59,3 +72,29 @@ class PromptVersion(Base):
 
     # Many-to-one: PromptVersion -> Prompt
     prompt = relationship("Prompt", back_populates="versions")
+
+
+class Insight(Base):
+    """Insight model for storing AI agent analysis results."""
+    
+    __tablename__ = "insights"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    prompt_id = Column(
+        Integer,
+        ForeignKey("prompts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    
+    # Store structured suggestions as JSON
+    improvement_ideas = Column(JSON, nullable=True, comment="List of improvement ideas")
+    reusable_patterns = Column(JSON, nullable=True, comment="List of reusable patterns")
+    warnings = Column(JSON, nullable=True, comment="List of warnings")
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    read_at = Column(DateTime, nullable=True, index=True, comment="Timestamp when insight was marked as read")
+    
+    # Many-to-one: Insight -> Prompt
+    prompt = relationship("Prompt", backref="insights")

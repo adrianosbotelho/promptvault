@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
 # Import all models to ensure they're registered with Base.metadata
-from app.models.database import Base, User, Prompt, PromptVersion
+from app.models.database import Base, User, Prompt, PromptVersion, Insight
 
 logger = logging.getLogger(__name__)
 

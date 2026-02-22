@@ -8,7 +8,16 @@ from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import array
 
 from app.models.database import Prompt, PromptVersion
-from app.models.prompt import PromptCreate, PromptUpdate, PromptResponse, PromptListItem
+from app.models.prompt import (
+    PromptCreate, 
+    PromptUpdate, 
+    PromptResponse, 
+    PromptListItem,
+    GroupedPromptsResponse,
+    GroupedPromptsByCategory,
+    GroupedPromptsByTag
+)
+from app.core.categories import PromptCategory, PromptTag
 
 logger = logging.getLogger(__name__)
 
@@ -87,10 +96,17 @@ class PromptService:
                 detail=f"Prompt with name '{prompt_data.name}' already exists"
             )
         
+        # Convert tags from enum to string list for storage
+        tags_list = None
+        if prompt_data.tags:
+            tags_list = [tag.value if hasattr(tag, 'value') else str(tag) for tag in prompt_data.tags]
+        
         # Create prompt
         db_prompt = Prompt(
             name=prompt_data.name,
             description=prompt_data.description,
+            category=prompt_data.category,
+            tags=tags_list,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -146,6 +162,16 @@ class PromptService:
         if prompt_data.description is not None:
             db_prompt.description = prompt_data.description
         
+        # Update category if provided
+        if prompt_data.category is not None:
+            db_prompt.category = prompt_data.category
+        
+        # Update tags if provided
+        if prompt_data.tags is not None:
+            # Convert tags from enum to string list for storage
+            tags_list = [tag.value if hasattr(tag, 'value') else str(tag) for tag in prompt_data.tags]
+            db_prompt.tags = tags_list
+        
         # Create new version if content is provided
         if prompt_data.content is not None:
             # Get the latest version number
@@ -181,21 +207,91 @@ class PromptService:
         
         result = []
         for prompt in prompts:
-            # Get latest version number
-            latest_version = db.query(func.max(PromptVersion.version)).filter(
-                PromptVersion.prompt_id == prompt.id
-            ).scalar()
-            
-            result.append(PromptListItem(
-                id=prompt.id,
-                name=prompt.name,
-                description=prompt.description,
-                created_at=prompt.created_at,
-                updated_at=prompt.updated_at,
-                latest_version=latest_version
-            ))
+            result.append(PromptService._prompt_to_list_item(db, prompt))
         
         return result
+    
+    @staticmethod
+    def _prompt_to_list_item(db: Session, prompt: Prompt) -> PromptListItem:
+        """Convert a Prompt model to PromptListItem."""
+        # Get latest version number
+        latest_version = db.query(func.max(PromptVersion.version)).filter(
+            PromptVersion.prompt_id == prompt.id
+        ).scalar()
+        
+        return PromptListItem(
+            id=prompt.id,
+            name=prompt.name,
+            description=prompt.description,
+            category=prompt.category,
+            tags=prompt.tags,  # Already stored as strings in DB
+            created_at=prompt.created_at,
+            updated_at=prompt.updated_at,
+            latest_version=latest_version
+        )
+    
+    @staticmethod
+    def get_grouped_prompts(db: Session) -> GroupedPromptsResponse:
+        """
+        Get prompts grouped by category and tag.
+        
+        Returns:
+            GroupedPromptsResponse with prompts organized by category and tag
+        """
+        prompts = db.query(Prompt).order_by(Prompt.updated_at.desc()).all()
+        
+        # Convert all prompts to list items
+        prompt_items = [PromptService._prompt_to_list_item(db, p) for p in prompts]
+        
+        # Group by category
+        by_category_dict = {}
+        for prompt_item in prompt_items:
+            category_key = prompt_item.category.value if prompt_item.category else None
+            if category_key not in by_category_dict:
+                by_category_dict[category_key] = []
+            by_category_dict[category_key].append(prompt_item)
+        
+        # Convert to GroupedPromptsByCategory list
+        by_category = []
+        for category_key, category_prompts in sorted(by_category_dict.items()):
+            by_category.append(GroupedPromptsByCategory(
+                category=category_key,
+                prompts=category_prompts,
+                count=len(category_prompts)
+            ))
+        
+        # Group by tag
+        by_tag_dict = {}
+        for prompt_item in prompt_items:
+            if prompt_item.tags:
+                for tag in prompt_item.tags:
+                    if tag not in by_tag_dict:
+                        by_tag_dict[tag] = []
+                    # Only add if not already in list (avoid duplicates)
+                    if prompt_item not in by_tag_dict[tag]:
+                        by_tag_dict[tag].append(prompt_item)
+        
+        # Convert to GroupedPromptsByTag list
+        by_tag = []
+        for tag_key, tag_prompts in sorted(by_tag_dict.items()):
+            by_tag.append(GroupedPromptsByTag(
+                tag=tag_key,
+                prompts=tag_prompts,
+                count=len(tag_prompts)
+            ))
+        
+        # Calculate totals
+        total_prompts = len(prompt_items)
+        total_with_category = sum(1 for p in prompt_items if p.category is not None)
+        total_with_tags = sum(1 for p in prompt_items if p.tags and len(p.tags) > 0)
+        
+        return GroupedPromptsResponse(
+            by_category=by_category,
+            by_tag=by_tag,
+            total_prompts=total_prompts,
+            total_with_category=total_with_category,
+            total_with_tags=total_with_tags
+        )
     
     @staticmethod
     def get_prompt(db: Session, prompt_id: int) -> Prompt:

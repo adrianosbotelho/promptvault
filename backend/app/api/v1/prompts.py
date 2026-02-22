@@ -11,6 +11,7 @@ from app.models.prompt import (
     PromptListItem,
     PromptVersionResponse,
     SemanticSearchResult,
+    GroupedPromptsResponse,
 )
 from app.models.database import Prompt, PromptVersion
 from app.services.prompt_service import PromptService
@@ -80,6 +81,36 @@ async def list_prompts(
         raise handle_db_error(e)
     except Exception as e:
         raise handle_db_error(e)
+
+
+@router.get("/grouped", response_model=GroupedPromptsResponse, status_code=status.HTTP_200_OK)
+async def get_grouped_prompts(
+    db: Session = Depends(get_db)
+):
+    """
+    Get prompts grouped by category and tag.
+    
+    Returns:
+        GroupedPromptsResponse with prompts organized by:
+        - by_category: List of groups, each containing prompts for a category
+        - by_tag: List of groups, each containing prompts with a specific tag
+        - Statistics: total_prompts, total_with_category, total_with_tags
+    """
+    try:
+        grouped = PromptService.get_grouped_prompts(db)
+        return grouped
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f"Error getting grouped prompts: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting grouped prompts: {str(e)}"
+        )
 
 
 @router.get("/search", response_model=List[SemanticSearchResult])

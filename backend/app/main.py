@@ -33,6 +33,16 @@ def create_app() -> FastAPI:
             import logging
             logger = logging.getLogger(__name__)
             logger.info("Database auto-initialization disabled. Use 'python init_db.py' to create tables manually.")
+        
+        # Start background agent worker
+        from app.background.agent_worker import start_worker
+        await start_worker()
+    
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """Cleanup on application shutdown."""
+        from app.background.agent_worker import stop_worker
+        await stop_worker()
 
     # Include API router
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)

@@ -8,7 +8,13 @@ from app.models.prompt import (
     PromptListItem,
     PromptVersionResponse,
 )
-from app.models.database import User, Prompt, PromptVersion, Base
+from app.models.insight import (
+    InsightBase,
+    InsightCreate,
+    InsightResponse,
+    InsightListItem,
+)
+from app.models.database import User, Prompt, PromptVersion, Insight, Base
 
 __all__ = [
     "UserBase",
@@ -25,5 +31,10 @@ __all__ = [
     "PromptVersionResponse",
     "Prompt",
     "PromptVersion",
+    "InsightBase",
+    "InsightCreate",
+    "InsightResponse",
+    "InsightListItem",
+    "Insight",
     "Base",
 ]

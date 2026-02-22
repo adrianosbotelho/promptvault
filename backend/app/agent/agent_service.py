@@ -12,6 +12,7 @@ from app.agent.agent_context import AgentContextBuilder, AgentContext
 from app.agent.agent_prompts import build_agent_prompt_with_context, AGENT_SYSTEM_PROMPT
 from app.core.llm_provider import LLMProvider
 from app.providers.openai_provider import OpenAIProvider
+from app.models.database import Insight
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -155,11 +156,82 @@ Return only valid JSON, no additional text."""
         # Send to LLM
         try:
             response = await self._call_llm_structured(structured_prompt)
-            return self._parse_suggestions(response)
+            suggestions = self._parse_suggestions(response)
+            
+            # Save insight if prompt_id is provided
+            if prompt_id:
+                self._save_insight(prompt_id, suggestions)
+            
+            return suggestions
         except Exception as e:
             logger.error(f"Error getting agent suggestions: {e}")
             # Return empty suggestions on error
             return AgentSuggestions()
+    
+    def _save_insight(self, prompt_id: int, suggestions: AgentSuggestions):
+        """
+        Save agent suggestions as an Insight record.
+        
+        Args:
+            prompt_id: ID of the prompt
+            suggestions: AgentSuggestions to save
+        """
+        try:
+            # Convert Pydantic models to dict for JSON storage
+            # Pydantic v2 uses model_dump(), v1 uses dict()
+            improvement_ideas_dict = None
+            if suggestions.improvement_ideas:
+                improvement_ideas_dict = [
+                    idea.model_dump() if hasattr(idea, 'model_dump') else (
+                        idea.dict() if hasattr(idea, 'dict') else idea
+                    )
+                    for idea in suggestions.improvement_ideas
+                ]
+            
+            reusable_patterns_dict = None
+            if suggestions.reusable_patterns:
+                reusable_patterns_dict = [
+                    pattern.model_dump() if hasattr(pattern, 'model_dump') else (
+                        pattern.dict() if hasattr(pattern, 'dict') else pattern
+                    )
+                    for pattern in suggestions.reusable_patterns
+                ]
+            
+            warnings_dict = None
+            if suggestions.warnings:
+                warnings_dict = [
+                    warning.model_dump() if hasattr(warning, 'model_dump') else (
+                        warning.dict() if hasattr(warning, 'dict') else warning
+                    )
+                    for warning in suggestions.warnings
+                ]
+            
+            # Only save if there's at least one suggestion
+            if improvement_ideas_dict or reusable_patterns_dict or warnings_dict:
+                insight = Insight(
+                    prompt_id=prompt_id,
+                    improvement_ideas=improvement_ideas_dict,
+                    reusable_patterns=reusable_patterns_dict,
+                    warnings=warnings_dict
+                )
+                
+                self.db.add(insight)
+                self.db.commit()
+                self.db.refresh(insight)
+                
+                logger.info(
+                    f"Saved insight for prompt {prompt_id}: "
+                    f"{len(improvement_ideas_dict or [])} improvements, "
+                    f"{len(reusable_patterns_dict or [])} patterns, "
+                    f"{len(warnings_dict or [])} warnings"
+                )
+            else:
+                logger.debug(f"No suggestions to save for prompt {prompt_id}")
+                
+        except Exception as e:
+            logger.error(f"Error saving insight for prompt {prompt_id}: {e}", exc_info=True)
+            # Don't fail the analysis if saving insight fails
+            self.db.rollback()
     
     async def _call_llm_structured(self, prompt: str) -> str:
         """
@@ -339,18 +411,68 @@ Return only valid JSON, no additional text."""
                     return json_match.group(0)
                 return "{}"
     
+    def _extract_json(self, text: str) -> str:
+        """
+        Extract JSON from text that may contain markdown, explanations, or extra text.
+        
+        Args:
+            text: Text that may contain JSON
+            
+        Returns:
+            JSON string
+        """
+        if not text:
+            return "{}"
+        
+        # Remove markdown code blocks
+        import re
+        
+        # Try to find JSON in markdown code blocks first
+        json_block_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        match = re.search(json_block_pattern, text, re.DOTALL)
+        if match:
+            json_text = match.group(1)
+        else:
+            # Try to find first JSON object
+            json_object_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+            matches = re.findall(json_object_pattern, text, re.DOTALL)
+            if matches:
+                # Return the longest match (most likely to be complete)
+                json_text = max(matches, key=len)
+            else:
+                # If no pattern found, try to parse the whole text
+                json_text = text.strip()
+        
+        # Clean invalid control characters (JSON spec allows \n, \r, \t but not other control chars)
+        # Remove control characters except \n (0x0A), \r (0x0D), \t (0x09)
+        json_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', json_text)
+        
+        return json_text
+    
     def _parse_suggestions(self, json_response: str) -> AgentSuggestions:
         """
         Parse JSON response into AgentSuggestions.
         
         Args:
-            json_response: JSON string from LLM
+            json_response: JSON string from LLM (may contain extra text)
             
         Returns:
             AgentSuggestions object
         """
         try:
-            data = json.loads(json_response)
+            # Extract JSON from response (may contain markdown or extra text)
+            json_text = self._extract_json(json_response)
+            
+            # Try to parse the extracted JSON
+            # Use strict=False to be more lenient with some edge cases
+            try:
+                data = json.loads(json_text, strict=False)
+            except json.JSONDecodeError as parse_error:
+                # If still fails, try more aggressive cleaning
+                logger.debug(f"First parse attempt failed: {parse_error}. Trying more aggressive cleaning...")
+                # Remove any remaining problematic characters
+                json_text_clean = re.sub(r'[^\x20-\x7E\n\t\r]', '', json_text)
+                data = json.loads(json_text_clean, strict=False)
             
             improvement_ideas = [
                 ImprovementIdea(**item)
@@ -374,8 +496,67 @@ Return only valid JSON, no additional text."""
             )
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing JSON response: {e}")
-            logger.debug(f"Response was: {json_response[:500]}")
+            logger.debug(f"Original response (first 1000 chars): {json_response[:1000]}")
+            logger.debug(f"Extracted JSON (first 500 chars): {json_text[:500] if 'json_text' in locals() else 'N/A'}")
+            
+            # Try to find and extract JSON more aggressively using brace matching
+            try:
+                import re
+                # Look for JSON object boundaries more carefully
+                start_idx = json_response.find('{')
+                if start_idx != -1:
+                    # Find matching closing brace
+                    brace_count = 0
+                    end_idx = start_idx
+                    for i in range(start_idx, len(json_response)):
+                        if json_response[i] == '{':
+                            brace_count += 1
+                        elif json_response[i] == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_idx = i + 1
+                                break
+                    
+                    if end_idx > start_idx:
+                        extracted = json_response[start_idx:end_idx]
+                        # Clean control characters before parsing
+                        extracted_clean = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', extracted)
+                        try:
+                            data = json.loads(extracted_clean, strict=False)
+                        except json.JSONDecodeError:
+                            # Try even more aggressive cleaning
+                            extracted_clean = re.sub(r'[^\x20-\x7E\n\t\r]', '', extracted)
+                            data = json.loads(extracted_clean, strict=False)
+                        logger.info("Successfully extracted JSON using brace matching")
+                        
+                        # Parse the successfully extracted JSON
+                        improvement_ideas = [
+                            ImprovementIdea(**item)
+                            for item in data.get("improvement_ideas", [])
+                        ]
+                        
+                        reusable_patterns = [
+                            ReusablePattern(**item)
+                            for item in data.get("reusable_patterns", [])
+                        ]
+                        
+                        warnings = [
+                            Warning(**item)
+                            for item in data.get("warnings", [])
+                        ]
+                        
+                        return AgentSuggestions(
+                            improvement_ideas=improvement_ideas,
+                            reusable_patterns=reusable_patterns,
+                            warnings=warnings
+                        )
+                else:
+                    logger.warning("No JSON object found in response")
+            except Exception as fallback_error:
+                logger.error(f"Fallback JSON extraction also failed: {fallback_error}")
+            
             return AgentSuggestions()
         except Exception as e:
             logger.error(f"Error parsing suggestions: {e}")
+            logger.debug(f"Response was: {json_response[:500]}")
             return AgentSuggestions()

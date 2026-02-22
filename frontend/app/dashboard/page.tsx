@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient, PromptListItem, SemanticSearchResult } from '@/lib/api';
+import { apiClient, PromptListItem, SemanticSearchResult, GroupedPromptsResponse } from '@/lib/api';
 import NewPromptForm from '@/components/NewPromptForm';
+import CategorySection from '@/components/CategorySection';
+import CategoryBadge from '@/components/CategoryBadge';
 
 export default function Dashboard() {
   const router = useRouter();
   const [prompts, setPrompts] = useState<PromptListItem[]>([]);
+  const [groupedPrompts, setGroupedPrompts] = useState<GroupedPromptsResponse | null>(null);
   const [searchResults, setSearchResults] = useState<SemanticSearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -16,6 +19,7 @@ export default function Dashboard() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
 
   useEffect(() => {
     loadPrompts();
@@ -50,8 +54,12 @@ export default function Dashboard() {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiClient.getPrompts();
-      setPrompts(data);
+      const [promptsData, groupedData] = await Promise.all([
+        apiClient.getPrompts(),
+        apiClient.getGroupedPrompts()
+      ]);
+      setPrompts(promptsData);
+      setGroupedPrompts(groupedData);
     } catch (err) {
       let errorMessage = 'Failed to load prompts';
       if (err instanceof Error) {
@@ -148,7 +156,7 @@ export default function Dashboard() {
         </div>
 
         {/* Actions */}
-        <div className="mb-6 flex gap-3">
+        <div className="mb-6 flex gap-3 items-center">
           <button
             onClick={handleNewPrompt}
             disabled={showNewForm}
@@ -167,6 +175,30 @@ export default function Dashboard() {
           >
             Refresh
           </button>
+          {!isSearchMode && (
+            <div className="ml-auto flex gap-2 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('grouped')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'grouped'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Grouped
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                List
+              </button>
+            </div>
+          )}
         </div>
 
         {/* New Prompt Form */}
@@ -210,7 +242,29 @@ export default function Dashboard() {
           </div>
         )}
 
-        {!loading && displayPrompts.length > 0 && (
+        {/* Grouped View */}
+        {!loading && !isSearchMode && viewMode === 'grouped' && groupedPrompts && (
+          <div className="space-y-4">
+            {groupedPrompts.by_category
+              .filter(cat => cat.category !== null) // Filter out null categories for main sections
+              .map((category) => (
+                <CategorySection
+                  key={category.category || 'uncategorized'}
+                  category={category}
+                  allPrompts={prompts}
+                />
+              ))}
+            {groupedPrompts.by_category.find(cat => cat.category === null) && (
+              <CategorySection
+                category={groupedPrompts.by_category.find(cat => cat.category === null)!}
+                allPrompts={prompts}
+              />
+            )}
+          </div>
+        )}
+
+        {/* List View */}
+        {!loading && displayPrompts.length > 0 && (isSearchMode || viewMode === 'list') && (
           <div className="space-y-3">
             {displayPrompts.map((prompt) => {
               // Get similarity score if in search mode
@@ -225,10 +279,13 @@ export default function Dashboard() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1 cursor-pointer" onClick={() => router.push(`/dashboard/prompts/${prompt.id}`)}>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-semibold text-gray-900 hover:text-blue-600">
                           {prompt.name}
                         </h3>
+                        {prompt.category && (
+                          <CategoryBadge category={prompt.category} size="sm" />
+                        )}
                         {searchResult && (
                           <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
                             {(searchResult.similarity * 100).toFixed(0)}% match
