@@ -252,8 +252,13 @@ class PromptService:
             by_category_dict[category_key].append(prompt_item)
         
         # Convert to GroupedPromptsByCategory list
+        # Sort with None values at the end
         by_category = []
-        for category_key, category_prompts in sorted(by_category_dict.items()):
+        sorted_items = sorted(
+            by_category_dict.items(),
+            key=lambda x: (x[0] is None, x[0] or '')
+        )
+        for category_key, category_prompts in sorted_items:
             by_category.append(GroupedPromptsByCategory(
                 category=category_key,
                 prompts=category_prompts,
@@ -303,6 +308,20 @@ class PromptService:
                 detail=f"Prompt with id {prompt_id} not found"
             )
         return prompt
+    
+    @staticmethod
+    def delete_prompt(db: Session, prompt_id: int) -> None:
+        """Delete a prompt and all its versions."""
+        prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt with id {prompt_id} not found"
+            )
+        
+        # Delete prompt (cascade will delete versions automatically)
+        db.delete(prompt)
+        db.commit()
     
     @staticmethod
     def semantic_search(db: Session, query: str, top_k: int = 5) -> List[Tuple[Prompt, PromptVersion, float]]:

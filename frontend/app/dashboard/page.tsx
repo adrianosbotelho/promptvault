@@ -6,6 +6,9 @@ import { apiClient, PromptListItem, SemanticSearchResult, GroupedPromptsResponse
 import NewPromptForm from '@/components/NewPromptForm';
 import CategorySection from '@/components/CategorySection';
 import CategoryBadge from '@/components/CategoryBadge';
+import EditPromptModal from '@/components/EditPromptModal';
+import DeletePromptModal from '@/components/DeletePromptModal';
+import Layout from '@/components/Layout';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -20,6 +23,8 @@ export default function Dashboard() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
+  const [editingPrompt, setEditingPrompt] = useState<PromptListItem | null>(null);
+  const [deletingPrompt, setDeletingPrompt] = useState<PromptListItem | null>(null);
 
   useEffect(() => {
     loadPrompts();
@@ -121,8 +126,9 @@ export default function Dashboard() {
     : prompts;
 
   return (
-    <div className="min-h-full bg-gray-50 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
+    <Layout>
+      <div className="min-h-full bg-gray-50 py-8 px-4">
+        <div className="max-w-4xl mx-auto">
 
         {/* Search Bar */}
         <div className="mb-6">
@@ -252,12 +258,14 @@ export default function Dashboard() {
                   key={category.category || 'uncategorized'}
                   category={category}
                   allPrompts={prompts}
+                  onPromptUpdated={loadPrompts}
                 />
               ))}
             {groupedPrompts.by_category.find(cat => cat.category === null) && (
               <CategorySection
                 category={groupedPrompts.by_category.find(cat => cat.category === null)!}
                 allPrompts={prompts}
+                onPromptUpdated={loadPrompts}
               />
             )}
           </div>
@@ -304,20 +312,72 @@ export default function Dashboard() {
                         </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleImprove(prompt.id)}
-                      disabled={improvingId === prompt.id}
-                      className="ml-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      {improvingId === prompt.id ? 'Improving...' : 'Improve'}
-                    </button>
+                    <div className="ml-4 flex gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPrompt(prompt);
+                        }}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                        title="Editar prompt"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingPrompt(prompt);
+                        }}
+                        className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+                        title="Excluir prompt"
+                      >
+                        🗑️
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleImprove(prompt.id);
+                        }}
+                        disabled={improvingId === prompt.id}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {improvingId === prompt.id ? 'Improving...' : 'Improve'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
+        
+        {/* Edit Modal */}
+        {editingPrompt && (
+          <EditPromptModal
+            prompt={editingPrompt}
+            isOpen={true}
+            onClose={() => setEditingPrompt(null)}
+            onSuccess={() => {
+              setEditingPrompt(null);
+              loadPrompts();
+            }}
+          />
+        )}
+
+        {/* Delete Modal */}
+        {deletingPrompt && (
+          <DeletePromptModal
+            prompt={deletingPrompt}
+            isOpen={true}
+            onClose={() => setDeletingPrompt(null)}
+            onSuccess={() => {
+              setDeletingPrompt(null);
+              loadPrompts();
+            }}
+          />
+        )}
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }

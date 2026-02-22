@@ -1,7 +1,9 @@
 from typing import List
 from fastapi import APIRouter, Depends, status, HTTPException
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, defer
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy import text
+import logging
 
 from app.core.dependencies import get_db
 from app.models.prompt import (
@@ -14,6 +16,9 @@ from app.models.prompt import (
     GroupedPromptsResponse,
 )
 from app.models.database import Prompt, PromptVersion
+
+logger = logging.getLogger(__name__)
+
 from app.services.prompt_service import PromptService
 from app.core.llm_provider import LLMProvider
 from app.core.dependencies import get_llm_provider
@@ -104,13 +109,7 @@ async def get_grouped_prompts(
     except (OperationalError, SQLAlchemyError) as e:
         raise handle_db_error(e)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.exception(f"Error getting grouped prompts: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting grouped prompts: {str(e)}"
-        )
+        raise handle_db_error(e)
 
 
 @router.get("/search", response_model=List[SemanticSearchResult])
@@ -120,64 +119,37 @@ async def search_prompts(
     db: Session = Depends(get_db)
 ):
     """
-    Perform semantic search on prompts using cosine similarity.
+    Semantic search for prompts using embeddings.
     
     Args:
         q: Search query text
-        top_k: Number of top results to return (default: 5, max: 20)
-        
+        top_k: Number of top results to return (default: 5)
+    
     Returns:
-        List of search results with prompt, version, and similarity score
+        List of SemanticSearchResult with prompts and similarity scores
     """
     try:
-        # Validate query parameter
-        if not q or not q.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Query parameter 'q' cannot be empty"
-            )
+        results = PromptService.semantic_search(db, q, top_k)
         
-        # Limit top_k to reasonable range
-        top_k = min(max(1, top_k), 20)
-        
-        # Perform semantic search
-        results = PromptService.semantic_search(db, q.strip(), top_k=top_k)
-        
-        # Convert results to response format
+        # Convert to SemanticSearchResult format
         search_results = []
         for prompt, version, similarity in results:
-            # Create PromptListItem from Prompt
-            prompt_item = PromptListItem(
-                id=prompt.id,
-                name=prompt.name,
-                description=prompt.description,
-                created_at=prompt.created_at,
-                updated_at=prompt.updated_at,
-                latest_version=version.version
-            )
-            
-            # Create PromptVersionResponse from PromptVersion
-            version_response = PromptVersionResponse(
-                id=version.id,
-                version=version.version,
-                content=version.content,
-                embedding=version.embedding,
-                created_at=version.created_at
-            )
-            
             search_results.append(SemanticSearchResult(
-                prompt=prompt_item,
-                version=version_response,
-                similarity=similarity
+                prompt=PromptListItem(
+                    id=prompt.id,
+                    name=prompt.name,
+                    description=prompt.description,
+                    category=prompt.category,
+                    tags=prompt.tags,
+                    created_at=prompt.created_at,
+                    updated_at=prompt.updated_at,
+                    latest_version=version.version
+                ),
+                similarity=similarity,
+                matched_content=version.content[:200] + "..." if len(version.content) > 200 else version.content
             ))
         
         return search_results
-        
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
     except HTTPException:
         raise
     except (OperationalError, SQLAlchemyError) as e:
@@ -196,8 +168,9 @@ async def get_prompt(
     """
     try:
         # Use joinedload to eagerly load versions
+        # Defer embedding column to avoid vector type issues with SQLAlchemy
         prompt = db.query(Prompt).options(
-            joinedload(Prompt.versions)
+            joinedload(Prompt.versions).defer(PromptVersion.embedding)
         ).filter(Prompt.id == prompt_id).first()
         
         if not prompt:
@@ -205,6 +178,11 @@ async def get_prompt(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Prompt with id {prompt_id} not found"
             )
+        
+        # Set embeddings to None - pgvector type cannot be easily converted to array
+        # Embeddings are not needed for prompt display, only for semantic search
+        for version in prompt.versions:
+            version.embedding = None
         
         return prompt
     except HTTPException:
@@ -226,8 +204,24 @@ async def update_prompt(
     """
     try:
         prompt = PromptService.update_prompt(db, prompt_id, prompt_data)
-        # Access versions to trigger lazy load
-        _ = prompt.versions
+        
+        # Reload prompt with versions, deferring embedding to avoid vector type issues
+        prompt = db.query(Prompt).options(
+            joinedload(Prompt.versions).defer(PromptVersion.embedding)
+        ).filter(Prompt.id == prompt_id).first()
+        
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt with id {prompt_id} not found"
+            )
+        
+        # Set embeddings to None - we don't need them for category/tag updates
+        # The embedding column uses pgvector type which can't be easily converted to array
+        # Since we're only updating metadata (category/tags), we can skip loading embeddings
+        for version in prompt.versions:
+            version.embedding = None
+        
         return prompt
     except HTTPException:
         raise
@@ -243,18 +237,27 @@ async def get_prompt_versions(
     db: Session = Depends(get_db)
 ):
     """
-    Get all versions of a specific prompt.
+    Get all versions of a prompt.
     """
     try:
-        # Verify prompt exists
         prompt = PromptService.get_prompt(db, prompt_id)
         
-        # Get all versions ordered by version number
-        versions = db.query(PromptVersion).filter(
-            PromptVersion.prompt_id == prompt_id
-        ).order_by(PromptVersion.version.asc()).all()
+        # Convert versions to response format
+        versions = []
+        for version in prompt.versions:
+            # Skip loading embeddings - pgvector type cannot be easily converted
+            # Embeddings are not needed for version history display
+            embedding = None
+            
+            versions.append(PromptVersionResponse(
+                id=version.id,
+                version=version.version,
+                content=version.content,
+                embedding=embedding,
+                created_at=version.created_at
+            ))
         
-        return versions
+        return sorted(versions, key=lambda v: v.version, reverse=True)
     except HTTPException:
         raise
     except (OperationalError, SQLAlchemyError) as e:
@@ -263,41 +266,45 @@ async def get_prompt_versions(
         raise handle_db_error(e)
 
 
-@router.post(
-    "/improve",
-    response_model=PromptImprovementResponse,
-    status_code=status.HTTP_200_OK
-)
+@router.delete("/{prompt_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_prompt(
+    prompt_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a prompt and all its versions.
+    """
+    try:
+        PromptService.delete_prompt(db, prompt_id)
+        return None
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        raise handle_db_error(e)
+
+
+@router.post("/improve", response_model=PromptImprovementResponse)
 async def improve_prompt(
     request: PromptImprovementRequest,
-    provider: LLMProvider = Depends(get_llm_provider)
+    llm_provider: LLMProvider = Depends(get_llm_provider),
+    db: Session = Depends(get_db)
 ):
     """
     Improve a prompt using AI.
-    
-    This endpoint uses the configured LLM provider (default: OpenAI) to improve
-    the structure and clarity of a prompt without changing its intent.
-    
-    Args:
-        request: Prompt improvement request containing the original prompt
-        
-    Returns:
-        PromptImprovementResponse with improved_prompt and explanation
     """
     try:
-        service = PromptImprovementService(provider=provider)
+        service = PromptImprovementService(provider=llm_provider)
         result = await service.improve_prompt(request.prompt)
-        return PromptImprovementResponse.from_result(result)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        
+        return PromptImprovementResponse(
+            improved_prompt=result.improved_prompt,
+            explanation=result.explanation
         )
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.exception(f"Error improving prompt: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error improving prompt: {str(e)}"
-        )
+        raise handle_db_error(e)

@@ -31,7 +31,15 @@ pip install -r requirements.txt
    - **Option 1**: Set `INIT_DB_ON_STARTUP=true` in `.env` to auto-create tables on startup
    - **Option 2**: Run manually: `python init_db.py` (recommended for first setup)
 
-4. Run the application:
+4. Create initial user:
+   ```bash
+   cd backend
+   python create_user.py
+   ```
+   This will prompt you for email and password to create the first user.
+   **Note**: This is a single-user system, so you only need to create one user.
+
+5. Run the application:
 
 **Option 1: Using the run script (recommended)**
 ```bash

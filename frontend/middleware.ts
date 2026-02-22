@@ -6,11 +6,16 @@ const TOKEN_COOKIE = 'promptvault_token';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Allow root path to pass through (it will handle redirect client-side)
+  if (pathname === '/') {
+    return NextResponse.next();
+  }
+
   // Protected routes that require authentication
   const isProtectedRoute = pathname.startsWith('/dashboard');
 
   // Public routes that don't require authentication
-  const isPublicRoute = pathname === '/login' || pathname === '/';
+  const isPublicRoute = pathname === '/login';
 
   // Check if route is protected
   if (isProtectedRoute) {

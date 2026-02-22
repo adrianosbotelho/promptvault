@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { apiClient, Prompt, PromptVersion, AgentSuggestions } from '@/lib/api';
+import { apiClient, Prompt, PromptVersion, AgentSuggestions, PromptListItem } from '@/lib/api';
+import EditPromptModal from '@/components/EditPromptModal';
+import DeletePromptModal from '@/components/DeletePromptModal';
+import Layout from '@/components/Layout';
 
 export default function PromptDetailPage() {
   const params = useParams();
@@ -16,6 +19,8 @@ export default function PromptDetailPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [suggestions, setSuggestions] = useState<AgentSuggestions | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [deletingPrompt, setDeletingPrompt] = useState(false);
 
   useEffect(() => {
     if (promptId) {
@@ -100,54 +105,61 @@ export default function PromptDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-full bg-gray-50 py-8 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center py-12 text-gray-500">
-            Loading prompt...
+      <Layout>
+        <div className="min-h-full bg-gray-50 py-8 px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center py-12 text-gray-500">
+              Loading prompt...
+            </div>
           </div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   if (error && !prompt) {
     return (
-      <div className="min-h-full bg-gray-50 py-8 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-            {error}
+      <Layout>
+        <div className="min-h-full bg-gray-50 py-8 px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+              {error}
+            </div>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+            >
+              Back to Dashboard
+            </button>
           </div>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-          >
-            Back to Dashboard
-          </button>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   if (!prompt) {
     return (
-      <div className="min-h-full bg-gray-50 py-8 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center py-12 text-gray-500">
-            Prompt not found
+      <Layout>
+        <div className="min-h-full bg-gray-50 py-8 px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center py-12 text-gray-500">
+              Prompt not found
+            </div>
           </div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   const latestVersion = getLatestVersion(prompt.versions);
 
   return (
-    <div className="min-h-full bg-gray-50 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
+    <Layout>
+      <div className="min-h-full bg-gray-50 py-8 px-4">
+        <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
-          <div>
+          <div className="flex-1">
             <button
               onClick={() => router.push('/dashboard')}
               className="text-sm text-gray-600 hover:text-gray-900 mb-2"
@@ -158,6 +170,20 @@ export default function PromptDetailPage() {
             {prompt.description && (
               <p className="text-gray-600 mt-2">{prompt.description}</p>
             )}
+          </div>
+          <div className="flex gap-2 ml-4">
+            <button
+              onClick={() => setEditingPrompt(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              ✏️ Editar
+            </button>
+            <button
+              onClick={() => setDeletingPrompt(true)}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+            >
+              🗑️ Excluir
+            </button>
           </div>
         </div>
 
@@ -434,8 +460,50 @@ export default function PromptDetailPage() {
               </div>
             </div>
           )}
+          </div>
         </div>
+
+        {/* Edit Modal */}
+        {editingPrompt && prompt && (
+          <EditPromptModal
+            prompt={{
+              id: prompt.id,
+              name: prompt.name,
+              description: prompt.description,
+              category: prompt.category,
+              tags: prompt.tags,
+              created_at: prompt.created_at,
+              updated_at: prompt.updated_at,
+            }}
+            isOpen={true}
+            onClose={() => setEditingPrompt(false)}
+            onSuccess={() => {
+              setEditingPrompt(false);
+              loadPrompt();
+            }}
+          />
+        )}
+
+        {/* Delete Modal */}
+        {deletingPrompt && prompt && (
+          <DeletePromptModal
+            prompt={{
+              id: prompt.id,
+              name: prompt.name,
+              description: prompt.description,
+              category: prompt.category,
+              tags: prompt.tags,
+              created_at: prompt.created_at,
+              updated_at: prompt.updated_at,
+            }}
+            isOpen={true}
+            onClose={() => setDeletingPrompt(false)}
+            onSuccess={() => {
+              router.push('/dashboard');
+            }}
+          />
+        )}
       </div>
-    </div>
+    </Layout>
   );
 }

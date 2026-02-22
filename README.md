@@ -109,7 +109,14 @@ promptvault/
    python init_db.py   # Create tables
    ```
 
-7. **Run the backend:**
+7. **Create initial user:**
+   ```bash
+   python create_user.py
+   ```
+   This will prompt you for email and password to create the first user.
+   **Note**: This is a single-user system, so you only need to create one user.
+
+8. **Run the backend:**
    ```bash
    python run.py
    # Or: uvicorn app.main:app --reload
