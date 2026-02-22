@@ -79,3 +79,13 @@ class PromptListItem(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class SemanticSearchResult(BaseModel):
+    """Result from semantic search."""
+    prompt: PromptListItem
+    version: PromptVersionResponse
+    similarity: float  # Similarity score between 0.0 and 1.0
+    
+    class Config:
+        from_attributes = True

@@ -8,6 +8,7 @@ from typing import Optional
 
 from app.core.llm_provider import LLMProvider, PromptImprovementResult
 from app.providers.openai_provider import OpenAIProvider
+from app.providers.groq_provider import GroqProvider
 from app.providers.mock_provider import MockLLMProvider
 from openai import APIError
 
@@ -25,7 +26,16 @@ class PromptImprovementService:
             provider: LLM provider instance (defaults to OpenAIProvider)
         """
         self.provider = provider or OpenAIProvider()
-        self._fallback_provider = MockLLMProvider()
+        self._groq_fallback = None
+        self._mock_fallback = MockLLMProvider()
+        
+        # Initialize Groq fallback if API key is available
+        from app.core.config import settings
+        if settings.GROQ_API_KEY and settings.GROQ_API_KEY.strip():
+            try:
+                self._groq_fallback = GroqProvider()
+            except Exception as e:
+                logger.warning(f"Failed to initialize GroqProvider: {e}")
     
     async def improve_prompt(self, prompt: str) -> PromptImprovementResult:
         """
@@ -47,17 +57,30 @@ class PromptImprovementService:
             logger.info("Prompt improvement completed successfully")
             return result
         except (APIError, ValueError, Exception) as e:
-            # If primary provider fails (API error, quota exceeded, etc.), use fallback
+            # Check if it's a 429 (rate limit) error
+            is_rate_limit = isinstance(e, APIError) and e.status_code == 429
+            
             error_msg = str(e)
             logger.warning(
-                f"Primary provider ({type(self.provider).__name__}) failed: {error_msg}. "
-                f"Falling back to MockLLMProvider"
+                f"Primary provider ({type(self.provider).__name__}) failed: {error_msg}"
             )
             
+            # Try Groq fallback first (especially for 429 errors)
+            if self._groq_fallback:
+                try:
+                    logger.info("Trying Groq as fallback provider...")
+                    result = await self._groq_fallback.improve_prompt_structured(prompt)
+                    logger.info("Prompt improvement completed using Groq fallback")
+                    return result
+                except Exception as groq_error:
+                    logger.warning(f"Groq fallback also failed: {groq_error}")
+            
+            # Final fallback to MockLLMProvider
             try:
-                result = await self._fallback_provider.improve_prompt_structured(prompt)
-                logger.info("Prompt improvement completed using fallback provider")
+                logger.warning("Falling back to MockLLMProvider")
+                result = await self._mock_fallback.improve_prompt_structured(prompt)
+                logger.info("Prompt improvement completed using MockLLMProvider fallback")
                 return result
             except Exception as fallback_error:
-                logger.error(f"Fallback provider also failed: {fallback_error}", exc_info=True)
+                logger.error(f"All providers failed, including fallback: {fallback_error}", exc_info=True)
                 raise

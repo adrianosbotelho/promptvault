@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { apiClient, Prompt, PromptVersion } from '@/lib/api';
+import { apiClient, Prompt, PromptVersion, AgentSuggestions } from '@/lib/api';
 
 export default function PromptDetailPage() {
   const params = useParams();
@@ -13,6 +13,8 @@ export default function PromptDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [improving, setImproving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [suggestions, setSuggestions] = useState<AgentSuggestions | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,6 +56,21 @@ export default function PromptDetailPage() {
       setError(err instanceof Error ? err.message : 'Failed to improve prompt');
     } finally {
       setImproving(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    try {
+      setAnalyzing(true);
+      setError(null);
+      setSuggestions(null);
+
+      const result = await apiClient.analyzePrompt(promptId);
+      setSuggestions(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze prompt');
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -169,13 +186,22 @@ export default function PromptDetailPage() {
                 </span>
               )}
             </h2>
-            <button
-              onClick={handleImprove}
-              disabled={improving || !latestVersion}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {improving ? 'Improving...' : 'Improve'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAnalyze}
+                disabled={analyzing || !latestVersion}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {analyzing ? 'Analyzing...' : '🧠 Analyze Prompt'}
+              </button>
+              <button
+                onClick={handleImprove}
+                disabled={improving || !latestVersion}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {improving ? 'Improving...' : 'Improve'}
+              </button>
+            </div>
           </div>
 
           {latestVersion ? (
@@ -198,6 +224,139 @@ export default function PromptDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Analysis Results */}
+        {suggestions && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">🧠 Analysis Results</h2>
+              <button
+                onClick={() => setSuggestions(null)}
+                className="text-sm text-gray-600 hover:text-gray-900"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Improvement Ideas */}
+            {suggestions.improvement_ideas.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                  💡 Improvement Ideas ({suggestions.improvement_ideas.length})
+                </h3>
+                <div className="space-y-3">
+                  {suggestions.improvement_ideas.map((idea, idx) => (
+                    <div
+                      key={idx}
+                      className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900">{idea.title}</h4>
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded ${
+                            idea.priority === 'high'
+                              ? 'bg-red-100 text-red-700'
+                              : idea.priority === 'medium'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
+                          {idea.priority}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 mb-2">{idea.description}</p>
+                      <p className="text-xs text-gray-600 italic">Reasoning: {idea.reasoning}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Reusable Patterns */}
+            {suggestions.reusable_patterns.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                  🔄 Reusable Patterns ({suggestions.reusable_patterns.length})
+                </h3>
+                <div className="space-y-3">
+                  {suggestions.reusable_patterns.map((pattern, idx) => (
+                    <div
+                      key={idx}
+                      className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                    >
+                      <h4 className="font-semibold text-gray-900 mb-2">{pattern.name}</h4>
+                      <p className="text-sm text-gray-700 mb-2">{pattern.description}</p>
+                      <div className="bg-gray-50 rounded p-2 mb-2">
+                        <p className="text-xs text-gray-600 font-mono">{pattern.example}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {pattern.use_cases.map((useCase, uIdx) => (
+                          <span
+                            key={uIdx}
+                            className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded"
+                          >
+                            {useCase}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Warnings */}
+            {suggestions.warnings.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                  ⚠️ Warnings ({suggestions.warnings.length})
+                </h3>
+                <div className="space-y-3">
+                  {suggestions.warnings.map((warning, idx) => (
+                    <div
+                      key={idx}
+                      className={`border rounded-lg p-4 ${
+                        warning.severity === 'error'
+                          ? 'bg-red-50 border-red-200'
+                          : warning.severity === 'warning'
+                          ? 'bg-yellow-50 border-yellow-200'
+                          : 'bg-blue-50 border-blue-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <p className="text-sm font-medium text-gray-900">{warning.message}</p>
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded ${
+                            warning.severity === 'error'
+                              ? 'bg-red-200 text-red-800'
+                              : warning.severity === 'warning'
+                              ? 'bg-yellow-200 text-yellow-800'
+                              : 'bg-blue-200 text-blue-800'
+                          }`}
+                        >
+                          {warning.severity}
+                        </span>
+                      </div>
+                      {warning.suggestion && (
+                        <p className="text-xs text-gray-600 mt-2">
+                          💡 Suggestion: {warning.suggestion}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {suggestions.improvement_ideas.length === 0 &&
+              suggestions.reusable_patterns.length === 0 &&
+              suggestions.warnings.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  No suggestions available at this time.
+                </div>
+              )}
+          </div>
+        )}
 
         {/* Versions History - Git Style */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">

@@ -10,6 +10,7 @@ from app.models.prompt import (
     PromptResponse,
     PromptListItem,
     PromptVersionResponse,
+    SemanticSearchResult,
 )
 from app.models.database import Prompt, PromptVersion
 from app.services.prompt_service import PromptService
@@ -73,6 +74,79 @@ async def list_prompts(
     """
     try:
         return PromptService.list_prompts(db)
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        raise handle_db_error(e)
+
+
+@router.get("/search", response_model=List[SemanticSearchResult])
+async def search_prompts(
+    q: str,
+    top_k: int = 5,
+    db: Session = Depends(get_db)
+):
+    """
+    Perform semantic search on prompts using cosine similarity.
+    
+    Args:
+        q: Search query text
+        top_k: Number of top results to return (default: 5, max: 20)
+        
+    Returns:
+        List of search results with prompt, version, and similarity score
+    """
+    try:
+        # Validate query parameter
+        if not q or not q.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Query parameter 'q' cannot be empty"
+            )
+        
+        # Limit top_k to reasonable range
+        top_k = min(max(1, top_k), 20)
+        
+        # Perform semantic search
+        results = PromptService.semantic_search(db, q.strip(), top_k=top_k)
+        
+        # Convert results to response format
+        search_results = []
+        for prompt, version, similarity in results:
+            # Create PromptListItem from Prompt
+            prompt_item = PromptListItem(
+                id=prompt.id,
+                name=prompt.name,
+                description=prompt.description,
+                created_at=prompt.created_at,
+                updated_at=prompt.updated_at,
+                latest_version=version.version
+            )
+            
+            # Create PromptVersionResponse from PromptVersion
+            version_response = PromptVersionResponse(
+                id=version.id,
+                version=version.version,
+                content=version.content,
+                embedding=version.embedding,
+                created_at=version.created_at
+            )
+            
+            search_results.append(SemanticSearchResult(
+                prompt=prompt_item,
+                version=version_response,
+                similarity=similarity
+            ))
+        
+        return search_results
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except HTTPException:
         raise
     except (OperationalError, SQLAlchemyError) as e:

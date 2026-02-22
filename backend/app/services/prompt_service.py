@@ -1,10 +1,11 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime
 import asyncio
 import logging
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
+from sqlalchemy.dialects.postgresql import array
 
 from app.models.database import Prompt, PromptVersion
 from app.models.prompt import PromptCreate, PromptUpdate, PromptResponse, PromptListItem
@@ -206,3 +207,136 @@ class PromptService:
                 detail=f"Prompt with id {prompt_id} not found"
             )
         return prompt
+    
+    @staticmethod
+    def semantic_search(db: Session, query: str, top_k: int = 5) -> List[Tuple[Prompt, PromptVersion, float]]:
+        """
+        Perform semantic search using cosine similarity.
+        
+        Args:
+            db: Database session
+            query: Search query text
+            top_k: Number of top results to return (default: 5)
+            
+        Returns:
+            List of tuples containing (Prompt, PromptVersion, similarity_score)
+            ordered by similarity (highest first)
+        """
+        if not query or not query.strip():
+            raise ValueError("Query cannot be empty")
+        
+        # Generate embedding for the query
+        query_embedding = PromptService._generate_embedding_sync(query.strip())
+        
+        if not query_embedding:
+            logger.warning("Could not generate embedding for query. Returning empty results.")
+            return []
+        
+        try:
+            # Use raw SQL for pgvector cosine similarity search
+            # The <=> operator calculates cosine distance (lower is more similar)
+            # We'll get the latest version of each prompt that has an embedding
+            sql_query = text("""
+                SELECT 
+                    p.id as prompt_id,
+                    p.name,
+                    p.description,
+                    p.created_at,
+                    p.updated_at,
+                    pv.id as version_id,
+                    pv.version,
+                    pv.content,
+                    pv.created_at as version_created_at,
+                    1 - (pv.embedding <=> :query_embedding::vector) as similarity
+                FROM prompts p
+                INNER JOIN prompt_versions pv ON p.id = pv.prompt_id
+                INNER JOIN (
+                    SELECT prompt_id, MAX(version) as max_version
+                    FROM prompt_versions
+                    WHERE embedding IS NOT NULL
+                    GROUP BY prompt_id
+                ) latest ON pv.prompt_id = latest.prompt_id AND pv.version = latest.max_version
+                WHERE pv.embedding IS NOT NULL
+                ORDER BY pv.embedding <=> :query_embedding::vector
+                LIMIT :top_k
+            """)
+            
+            # Convert embedding list to PostgreSQL array format
+            embedding_array = array(query_embedding)
+            
+            result = db.execute(
+                sql_query,
+                {
+                    "query_embedding": str(query_embedding),  # Convert to string for PostgreSQL
+                    "top_k": top_k
+                }
+            )
+            
+            results = []
+            for row in result:
+                # Reconstruct Prompt object
+                prompt = Prompt(
+                    id=row.prompt_id,
+                    name=row.name,
+                    description=row.description,
+                    created_at=row.created_at,
+                    updated_at=row.updated_at
+                )
+                
+                # Reconstruct PromptVersion object
+                version = PromptVersion(
+                    id=row.version_id,
+                    prompt_id=row.prompt_id,
+                    version=row.version,
+                    content=row.content,
+                    created_at=row.version_created_at
+                )
+                
+                similarity = float(row.similarity)
+                results.append((prompt, version, similarity))
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error performing semantic search: {e}")
+            # If vector search fails, try fallback to text search
+            logger.warning("Falling back to text-based search")
+            return PromptService._fallback_text_search(db, query, top_k)
+    
+    @staticmethod
+    def _fallback_text_search(db: Session, query: str, top_k: int) -> List[Tuple[Prompt, PromptVersion, float]]:
+        """Fallback text search when vector search is not available."""
+        # Simple text-based search as fallback
+        query_lower = query.lower()
+        prompts = db.query(Prompt).all()
+        
+        results = []
+        for prompt in prompts:
+            # Get latest version
+            latest_version = db.query(func.max(PromptVersion.version)).filter(
+                PromptVersion.prompt_id == prompt.id
+            ).scalar()
+            
+            if latest_version:
+                version = db.query(PromptVersion).filter(
+                    PromptVersion.prompt_id == prompt.id,
+                    PromptVersion.version == latest_version
+                ).first()
+                
+                if version and version.content:
+                    # Simple text matching score
+                    content_lower = version.content.lower()
+                    score = 0.0
+                    if query_lower in content_lower:
+                        score = 0.5
+                    if prompt.name and query_lower in prompt.name.lower():
+                        score += 0.3
+                    if prompt.description and query_lower in prompt.description.lower():
+                        score += 0.2
+                    
+                    if score > 0:
+                        results.append((prompt, version, score))
+        
+        # Sort by score and return top_k
+        results.sort(key=lambda x: x[2], reverse=True)
+        return results[:top_k]
