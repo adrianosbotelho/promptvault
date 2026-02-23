@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { PromptListItem, PromptCategory, PromptTag } from '@/lib/api';
+import { X } from 'lucide-react';
 
 interface EditPromptModalProps {
   prompt: PromptListItem;
@@ -88,67 +89,67 @@ export default function EditPromptModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1f1f23] rounded border border-[#2c2c34] shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Editar Prompt
+            <h2 className="text-sm font-semibold text-white">
+              Edit Prompt
             </h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-[#8c8c8c] hover:text-white transition-colors"
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 text-red-400 rounded text-xs">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Nome *
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-1">
+                Name *
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Nome do prompt"
+                className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
+                placeholder="Prompt name"
               />
             </div>
 
             {/* Description */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Descrição
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-1">
+                Description
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Descrição do prompt"
+                className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
+                placeholder="Prompt description"
               />
             </div>
 
             {/* Category Selection */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Categoria
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-2">
+                Category
               </label>
               <div className="space-y-2">
                 {CATEGORIES.map((cat) => (
                   <label
                     key={cat.value || 'none'}
-                    className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="flex items-center p-3 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
                   >
                     <input
                       type="radio"
@@ -156,9 +157,9 @@ export default function EditPromptModal({
                       value={cat.value || ''}
                       checked={category === cat.value}
                       onChange={() => setCategory(cat.value)}
-                      className="mr-3"
+                      className="mr-3 accent-[#3274d9]"
                     />
-                    <span className="text-sm">{cat.label}</span>
+                    <span className="text-xs text-white">{cat.label}</span>
                   </label>
                 ))}
               </div>
@@ -166,42 +167,42 @@ export default function EditPromptModal({
 
             {/* Tags Selection */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Tags (múltipla seleção)
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-2">
+                Tags (multiple selection)
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {TAGS.map((tag) => (
                   <label
                     key={tag.value}
-                    className="flex items-center p-2 border rounded cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="flex items-center p-2 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
                   >
                     <input
                       type="checkbox"
                       checked={tags.includes(tag.value)}
                       onChange={() => handleTagToggle(tag.value)}
-                      className="mr-2"
+                      className="mr-2 accent-[#3274d9]"
                     />
-                    <span className="text-sm">{tag.label}</span>
+                    <span className="text-xs text-white">{tag.label}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-3 pt-4 border-t">
+            <div className="flex gap-3 pt-4 border-t border-[#2c2c34]">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                className="flex-1 px-3 py-2 bg-[#2c2c34] text-[#d8d9da] rounded text-sm font-medium hover:bg-[#3a3a44] transition-colors"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading || !name.trim()}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-3 py-2 bg-[#3274d9] text-white rounded text-sm font-medium hover:bg-[#1f60c4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Salvando...' : 'Salvar Alterações'}
+                {loading ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </form>

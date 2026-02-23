@@ -184,6 +184,7 @@ class PromptVersionResponse(BaseModel):
     version: int
     content: str
     embedding: Optional[List[float]] = None  # Vector embedding with dimension 1536
+    improved_by: Optional[str] = None  # Provider used to improve this version (e.g., GroqProvider, OpenAIProvider, MockLLMProvider)
     created_at: datetime
     
     class Config:

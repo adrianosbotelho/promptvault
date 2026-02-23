@@ -53,11 +53,11 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Prompt</h2>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <h2 className="text-sm font-semibold text-white mb-4">Create New Prompt</h2>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+        <div className="p-3 bg-red-500/10 border border-red-500/50 text-red-400 rounded text-xs">
           {error}
         </div>
       )}
@@ -65,7 +65,7 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
       <div className="space-y-4">
         {/* Title */}
         <div>
-          <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="title" className="block text-xs font-medium text-[#8c8c8c] mb-1">
             Title *
           </label>
           <input
@@ -74,14 +74,14 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
             placeholder="Enter prompt title"
           />
         </div>
 
         {/* Description */}
         <div>
-          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="description" className="block text-xs font-medium text-[#8c8c8c] mb-1">
             Description
           </label>
           <input
@@ -89,14 +89,14 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
             id="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
             placeholder="Optional description"
           />
         </div>
 
         {/* Content */}
         <div>
-          <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="content" className="block text-xs font-medium text-[#8c8c8c] mb-1">
             Content *
           </label>
           <textarea
@@ -105,7 +105,7 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
             onChange={(e) => setContent(e.target.value)}
             required
             rows={8}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+            className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9] resize-y font-mono"
             placeholder="Enter your prompt content here..."
           />
         </div>
@@ -115,7 +115,7 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-3 py-2 bg-[#3274d9] text-white rounded text-sm font-medium hover:bg-[#1f60c4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Creating...' : 'Create Prompt'}
           </button>
@@ -124,7 +124,7 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
               type="button"
               onClick={onCancel}
               disabled={loading}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 bg-[#2c2c34] text-[#d8d9da] rounded text-sm font-medium hover:bg-[#3a3a44] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { PromptListItem } from '@/lib/api';
+import { X } from 'lucide-react';
 
 interface DeletePromptModalProps {
   prompt: PromptListItem;
@@ -24,7 +25,7 @@ export default function DeletePromptModal({
 
   const handleDelete = async () => {
     if (confirmText !== prompt.name) {
-      setError('O nome não confere. Digite o nome exato do prompt para confirmar.');
+      setError('Name does not match. Type the exact prompt name to confirm.');
       return;
     }
 
@@ -45,45 +46,45 @@ export default function DeletePromptModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1f1f23] rounded border border-[#2c2c34] shadow-xl max-w-md w-full">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-red-600">
-              Excluir Prompt
+            <h2 className="text-sm font-semibold text-red-400">
+              Delete Prompt
             </h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-[#8c8c8c] hover:text-white transition-colors"
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
           </div>
 
           <div className="mb-4">
-            <p className="text-sm text-gray-600 mb-2">
-              Tem certeza que deseja excluir o prompt <strong>"{prompt.name}"</strong>?
+            <p className="text-xs text-[#d8d9da] mb-2">
+              Are you sure you want to delete the prompt <strong className="text-white">"{prompt.name}"</strong>?
             </p>
-            <p className="text-xs text-gray-500 mb-4">
-              Esta ação não pode ser desfeita. Todas as versões do prompt serão excluídas permanentemente.
+            <p className="text-xs text-[#8c8c8c] mb-4">
+              This action cannot be undone. All versions of the prompt will be permanently deleted.
             </p>
             
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Digite o nome do prompt para confirmar:
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-1">
+                Type the prompt name to confirm:
               </label>
               <input
                 type="text"
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500"
                 placeholder={prompt.name}
               />
             </div>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 text-red-400 rounded text-xs">
               {error}
             </div>
           )}
@@ -92,16 +93,16 @@ export default function DeletePromptModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              className="flex-1 px-3 py-2 bg-[#2c2c34] text-[#d8d9da] rounded text-sm font-medium hover:bg-[#3a3a44] transition-colors"
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={handleDelete}
               disabled={loading || confirmText !== prompt.name}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-3 py-2 bg-red-500/20 text-red-400 rounded text-sm font-medium hover:bg-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-red-500/50"
             >
-              {loading ? 'Excluindo...' : 'Excluir Permanentemente'}
+              {loading ? 'Deleting...' : 'Delete Permanently'}
             </button>
           </div>
         </div>

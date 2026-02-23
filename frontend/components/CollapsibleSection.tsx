@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, ReactNode } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface CollapsibleSectionProps {
   title: string | ReactNode;
@@ -12,20 +13,22 @@ export default function CollapsibleSection({ title, children, defaultOpen = fals
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="mb-4 border border-gray-200 rounded-lg bg-white">
+    <div className="mb-4 border border-[#2c2c34] rounded bg-[#1f1f23]">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 transition-colors rounded-t-lg"
+        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[#2c2c34] transition-colors rounded-t"
       >
-        <span className="font-semibold text-gray-900 flex items-center gap-2">
+        <span className="font-semibold text-white text-sm flex items-center gap-2">
           {typeof title === 'string' ? title : title}
         </span>
-        <span className="text-gray-500 text-xl">
-          {isOpen ? '▼' : '▸'}
-        </span>
+        {isOpen ? (
+          <ChevronDown className="w-4 h-4 text-[#8c8c8c]" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-[#8c8c8c]" />
+        )}
       </button>
       {isOpen && (
-        <div className="px-4 pb-4 border-t border-gray-200">
+        <div className="px-4 pb-4 border-t border-[#2c2c34]">
           {children}
         </div>
       )}

@@ -46,15 +46,18 @@ class PromptImprovementService:
             prompt: The original prompt text to improve
             
         Returns:
-            PromptImprovementResult with improved_prompt and explanation
+            PromptImprovementResult with improved_prompt, explanation, and provider name
             
         Raises:
             Exception: If both providers fail
         """
+        provider_name = type(self.provider).__name__
         try:
-            logger.info(f"Improving prompt (length: {len(prompt)} chars) using {type(self.provider).__name__}")
+            logger.info(f"Improving prompt (length: {len(prompt)} chars) using {provider_name}")
             result = await self.provider.improve_prompt_structured(prompt)
-            logger.info("Prompt improvement completed successfully")
+            # Set provider name in result
+            result.provider = provider_name
+            logger.info(f"Prompt improvement completed successfully using {provider_name}")
             return result
         except (APIError, ValueError, Exception) as e:
             # Check if it's a 429 (rate limit) error
@@ -62,7 +65,7 @@ class PromptImprovementService:
             
             error_msg = str(e)
             logger.warning(
-                f"Primary provider ({type(self.provider).__name__}) failed: {error_msg}"
+                f"Primary provider ({provider_name}) failed: {error_msg}"
             )
             
             # Try Groq fallback first (especially for 429 errors)
@@ -70,6 +73,7 @@ class PromptImprovementService:
                 try:
                     logger.info("Trying Groq as fallback provider...")
                     result = await self._groq_fallback.improve_prompt_structured(prompt)
+                    result.provider = "GroqProvider"
                     logger.info("Prompt improvement completed using Groq fallback")
                     return result
                 except Exception as groq_error:
@@ -79,6 +83,7 @@ class PromptImprovementService:
             try:
                 logger.warning("Falling back to MockLLMProvider")
                 result = await self._mock_fallback.improve_prompt_structured(prompt)
+                result.provider = "MockLLMProvider"
                 logger.info("Prompt improvement completed using MockLLMProvider fallback")
                 return result
             except Exception as fallback_error:

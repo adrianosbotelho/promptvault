@@ -77,7 +77,7 @@ class AgentService:
     async def get_suggestions(
         self,
         prompt_id: Optional[int] = None,
-        user_query: str = "Analyze this prompt and provide suggestions for improvements, reusable patterns, and any warnings.",
+        user_query: str = "Analise este prompt e forneça sugestões de melhorias, padrões reutilizáveis e avisos. Responda em Português-BR.",
         similar_count: int = 5,
         latest_count: int = 10
     ) -> AgentSuggestions:
@@ -124,34 +124,34 @@ class AgentService:
         # Add structured output instruction
         structured_prompt = f"""{prompt}
 
-Please provide your response in the following JSON format:
+Retorne sua análise no seguinte formato JSON. IMPORTANTE: Todos os textos (títulos, descrições, mensagens, etc.) devem estar em Português-BR:
 {{
     "improvement_ideas": [
         {{
-            "title": "Short title",
-            "description": "Detailed description",
+            "title": "Título curto",
+            "description": "Descrição detalhada",
             "priority": "high|medium|low",
-            "reasoning": "Why this improvement helps"
+            "reasoning": "Por que esta melhoria ajuda"
         }}
     ],
     "reusable_patterns": [
         {{
-            "name": "Pattern name",
-            "description": "What this pattern does",
-            "example": "Example usage",
-            "use_cases": ["use case 1", "use case 2"]
+            "name": "Nome do padrão",
+            "description": "O que este padrão faz",
+            "example": "Exemplo de uso",
+            "use_cases": ["caso de uso 1", "caso de uso 2"]
         }}
     ],
     "warnings": [
         {{
             "severity": "error|warning|info",
-            "message": "Warning message",
-            "suggestion": "Optional suggestion"
+            "message": "Mensagem de aviso",
+            "suggestion": "Sugestão opcional"
         }}
     ]
 }}
 
-Return only valid JSON, no additional text."""
+Retorne apenas JSON válido, sem texto adicional. Todos os campos de texto devem estar em Português-BR."""
         
         # Send to LLM
         try:

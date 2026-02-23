@@ -2,7 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session, joinedload, defer
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy import text
+from sqlalchemy import text, func
 import logging
 
 from app.core.dependencies import get_db
@@ -15,6 +15,7 @@ from app.models.prompt import (
     SemanticSearchResult,
     GroupedPromptsResponse,
 )
+from app.models.stats import PromptStatsResponse
 from app.models.database import Prompt, PromptVersion
 
 logger = logging.getLogger(__name__)
@@ -158,6 +159,69 @@ async def search_prompts(
         raise handle_db_error(e)
 
 
+@router.get(
+    "/stats",
+    response_model=PromptStatsResponse,
+    status_code=status.HTTP_200_OK
+)
+async def get_prompt_statistics(
+    db: Session = Depends(get_db)
+):
+    """
+    Get statistics about prompts.
+    
+    Returns:
+        PromptStatsResponse with:
+        - total_prompts: Total number of prompts
+        - total_by_category: Count of prompts by category
+        - total_analyzed: Number of prompts with insights
+        - total_improved: Number of prompts with more than 1 version
+        - total_versions: Total number of versions
+        - uncategorized_count: Number of prompts without category
+    """
+    try:
+        stats = PromptService.get_statistics(db)
+        logger.debug(f"Statistics retrieved: {stats}")
+        # Validate the response model
+        try:
+            response = PromptStatsResponse(**stats)
+            return response
+        except Exception as validation_error:
+            # Log detailed validation error
+            logger.error(f"Pydantic validation error: {validation_error}")
+            logger.error(f"Stats data: {stats}")
+            logger.error(f"Stats data types: {[(k, type(v).__name__) for k, v in stats.items()]}")
+            # Try to create response with explicit type conversion
+            try:
+                # Ensure all values are correct types
+                validated_stats = {
+                    "total_prompts": int(stats.get("total_prompts", 0)),
+                    "total_by_category": {str(k): int(v) for k, v in stats.get("total_by_category", {}).items()},
+                    "total_analyzed": int(stats.get("total_analyzed", 0)),
+                    "total_improved": int(stats.get("total_improved", 0)),
+                    "total_versions": int(stats.get("total_versions", 0)),
+                    "uncategorized_count": int(stats.get("uncategorized_count", 0))
+                }
+                response = PromptStatsResponse(**validated_stats)
+                return response
+            except Exception as retry_error:
+                logger.error(f"Retry validation also failed: {retry_error}")
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid statistics data format: {str(validation_error)}"
+                )
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        logger.exception(f"Error getting prompt statistics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting prompt statistics: {str(e)}"
+        )
+
+
 @router.get("/{prompt_id}", response_model=PromptResponse)
 async def get_prompt(
     prompt_id: int,
@@ -292,7 +356,7 @@ async def improve_prompt(
     db: Session = Depends(get_db)
 ):
     """
-    Improve a prompt using AI.
+    Improve a prompt using AI (returns improved prompt without saving).
     """
     try:
         service = PromptImprovementService(provider=llm_provider)
@@ -300,8 +364,98 @@ async def improve_prompt(
         
         return PromptImprovementResponse(
             improved_prompt=result.improved_prompt,
-            explanation=result.explanation
+            explanation=result.explanation,
+            provider=result.provider
         )
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        raise handle_db_error(e)
+
+
+@router.post("/{prompt_id}/improve", response_model=PromptResponse)
+async def improve_and_save_prompt(
+    prompt_id: int,
+    llm_provider: LLMProvider = Depends(get_llm_provider),
+    db: Session = Depends(get_db)
+):
+    """
+    Improve a prompt using AI and automatically save as a new version.
+    The improved version will be tagged with the provider used.
+    """
+    try:
+        # Get the current prompt with versions, deferring embedding to avoid vector type issues
+        prompt = db.query(Prompt).options(
+            joinedload(Prompt.versions).defer(PromptVersion.embedding)
+        ).filter(Prompt.id == prompt_id).first()
+        
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt with id {prompt_id} not found"
+            )
+        
+        # Get the latest version content
+        if not prompt.versions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Prompt has no versions to improve"
+            )
+        
+        latest_version = max(prompt.versions, key=lambda v: v.version)
+        current_content = latest_version.content
+        
+        # Improve the prompt
+        service = PromptImprovementService(provider=llm_provider)
+        result = await service.improve_prompt(current_content)
+        
+        # Save as new version with provider tag
+        from app.models.prompt import PromptUpdate
+        update_data = PromptUpdate(content=result.improved_prompt)
+        
+        # Update prompt with improved content, passing provider name
+        updated_prompt = PromptService.update_prompt(db, prompt_id, update_data, improved_by=result.provider)
+        
+        # Update the latest version's improved_by field using raw SQL to avoid vector type issues
+        # Get the latest version number
+        latest_version_num = db.query(func.max(PromptVersion.version)).filter(
+            PromptVersion.prompt_id == prompt_id
+        ).scalar()
+        
+        if latest_version_num:
+            # Update improved_by using raw SQL
+            db.execute(
+                text("""
+                    UPDATE prompt_versions 
+                    SET improved_by = :provider
+                    WHERE prompt_id = :prompt_id AND version = :version
+                """),
+                {
+                    "provider": result.provider,
+                    "prompt_id": prompt_id,
+                    "version": latest_version_num
+                }
+            )
+            db.commit()
+        
+        # Reload with versions, deferring embedding to avoid vector type issues
+        prompt = db.query(Prompt).options(
+            joinedload(Prompt.versions).defer(PromptVersion.embedding)
+        ).filter(Prompt.id == prompt_id).first()
+        
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt with id {prompt_id} not found"
+            )
+        
+        # Set embeddings to None for display
+        for version in prompt.versions:
+            version.embedding = None
+        
+        return prompt
     except HTTPException:
         raise
     except (OperationalError, SQLAlchemyError) as e:

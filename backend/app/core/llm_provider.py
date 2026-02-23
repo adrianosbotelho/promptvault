@@ -13,6 +13,7 @@ class PromptImprovementResult(BaseModel):
     """Result model for prompt improvement."""
     improved_prompt: str
     explanation: str
+    provider: str = "unknown"  # Name of the provider used (e.g., "OpenAIProvider", "GroqProvider", "MockLLMProvider")
 
 
 class LLMProvider(ABC):

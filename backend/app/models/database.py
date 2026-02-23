@@ -68,6 +68,11 @@ class PromptVersion(Base):
         nullable=True,
         comment="Vector embedding with dimension 1536 using pgvector"
     )
+    improved_by = Column(
+        String,
+        nullable=True,
+        comment="Provider used to improve this version (e.g., GroqProvider, OpenAIProvider, MockLLMProvider)"
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Many-to-one: PromptVersion -> Prompt
@@ -98,3 +103,17 @@ class Insight(Base):
     
     # Many-to-one: Insight -> Prompt
     prompt = relationship("Prompt", backref="insights")
+
+
+class WorkerConfig(Base):
+    """Worker configuration model for storing agent worker settings."""
+    
+    __tablename__ = "worker_config"
+    
+    id = Column(Integer, primary_key=True, index=True, default=1)  # Single row
+    enabled = Column(String, nullable=False, default="false", comment="Enable/disable automatic worker (true/false)")
+    interval_minutes = Column(Integer, nullable=False, default=5, comment="Interval between analysis cycles in minutes")
+    max_prompts = Column(Integer, nullable=False, default=5, comment="Maximum prompts to analyze per cycle")
+    max_retries = Column(Integer, nullable=False, default=2, comment="Maximum retries per prompt")
+    use_free_apis_only = Column(String, nullable=False, default="true", comment="Use only free APIs (true/false)")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

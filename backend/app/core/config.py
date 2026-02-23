@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     HUGGINGFACE_API_KEY: str = ""
     HUGGINGFACE_MODEL: str = "mistralai/Mistral-7B-Instruct-v0.2"  # Default free model
     
+    # Agent Worker
+    AGENT_WORKER_ENABLED: bool = False  # Set to True to enable automatic background worker
+    AGENT_WORKER_INTERVAL_MINUTES: int = 5  # Interval between analysis cycles
+    AGENT_WORKER_MAX_PROMPTS: int = 5  # Maximum prompts to analyze per cycle
+    AGENT_WORKER_MAX_RETRIES: int = 2  # Maximum retries per prompt
+    AGENT_WORKER_USE_FREE_APIS_ONLY: bool = True  # Use only free APIs (Groq, HuggingFace, Mock)
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -18,6 +18,7 @@ from app.models.prompt import (
     GroupedPromptsByTag
 )
 from app.core.categories import PromptCategory, PromptTag
+from app.models.database import Insight
 
 logger = logging.getLogger(__name__)
 
@@ -117,14 +118,38 @@ class PromptService:
         embedding = PromptService._generate_embedding_sync(prompt_data.content)
         
         # Create initial version (version 1)
+        # Don't set embedding directly if it's a vector type - we'll update it with raw SQL
         db_version = PromptVersion(
             prompt_id=db_prompt.id,
             version=1,
             content=prompt_data.content,
-            embedding=embedding,
+            embedding=None,  # Set to None initially to avoid vector type issues
             created_at=datetime.utcnow()
         )
         db.add(db_version)
+        db.flush()  # Flush to get the version ID
+        
+        # Update embedding using raw SQL if embedding was generated
+        if embedding:
+            try:
+                # Convert embedding list to string format for PostgreSQL vector type
+                embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+                db.execute(
+                    text("""
+                        UPDATE prompt_versions 
+                        SET embedding = :embedding::vector(1536)
+                        WHERE id = :version_id
+                    """),
+                    {
+                        "embedding": embedding_str,
+                        "version_id": db_version.id
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Could not set embedding using vector type: {e}")
+                # If vector update fails, just continue without embedding
+                # The prompt will still be created successfully
+        
         db.commit()
         db.refresh(db_prompt)
         
@@ -134,7 +159,8 @@ class PromptService:
     def update_prompt(
         db: Session, 
         prompt_id: int, 
-        prompt_data: PromptUpdate
+        prompt_data: PromptUpdate,
+        improved_by: Optional[str] = None
     ) -> Prompt:
         """Update prompt and create new version if content changed."""
         db_prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
@@ -183,14 +209,38 @@ class PromptService:
             embedding = PromptService._generate_embedding_sync(prompt_data.content)
             
             # Create new version
+            # Don't set embedding directly if it's a vector type - we'll update it with raw SQL
             new_version = PromptVersion(
                 prompt_id=prompt_id,
                 version=latest_version + 1,
                 content=prompt_data.content,
-                embedding=embedding,
+                embedding=None,  # Set to None initially to avoid vector type issues
+                improved_by=improved_by,  # Tag with provider if provided
                 created_at=datetime.utcnow()
             )
             db.add(new_version)
+            db.flush()  # Flush to get the version ID
+            
+            # Update embedding using raw SQL if embedding was generated
+            if embedding:
+                try:
+                    # Convert embedding list to string format for PostgreSQL vector type
+                    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+                    db.execute(
+                        text("""
+                            UPDATE prompt_versions 
+                            SET embedding = :embedding::vector(1536)
+                            WHERE id = :version_id
+                        """),
+                        {
+                            "embedding": embedding_str,
+                            "version_id": new_version.id
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not set embedding using vector type: {e}")
+                    # If vector update fails, just continue without embedding
+                    # The version will still be created successfully
         
         # Update timestamp
         db_prompt.updated_at = datetime.utcnow()
@@ -455,3 +505,68 @@ class PromptService:
         # Sort by score and return top_k
         results.sort(key=lambda x: x[2], reverse=True)
         return results[:top_k]
+    
+    @staticmethod
+    def get_statistics(db: Session) -> dict:
+        """
+        Get statistics about prompts.
+        
+        Returns:
+            dict with statistics including:
+            - total_prompts: Total number of prompts
+            - total_by_category: Count of prompts by category
+            - total_analyzed: Number of prompts with insights
+            - total_improved: Number of prompts with more than 1 version
+            - total_versions: Total number of versions
+            - uncategorized_count: Number of prompts without category
+        """
+        # Total prompts
+        total_prompts = db.query(func.count(Prompt.id)).scalar() or 0
+        
+        # Total versions
+        total_versions = db.query(func.count(PromptVersion.id)).scalar() or 0
+        
+        # Prompts by category
+        category_counts = db.query(
+            Prompt.category,
+            func.count(Prompt.id)
+        ).group_by(Prompt.category).all()
+        
+        total_by_category = {}
+        uncategorized_count = 0
+        
+        for category, count in category_counts:
+            if category is None:
+                uncategorized_count = int(count)
+            else:
+                # Convert enum to lowercase string for consistency
+                if hasattr(category, 'value'):
+                    category_key = category.value.lower()
+                elif hasattr(category, 'name'):
+                    category_key = category.name.lower()
+                else:
+                    category_key = str(category).lower()
+                total_by_category[category_key] = int(count)
+        
+        # Prompts with insights (analyzed)
+        prompts_with_insights = int(db.query(func.count(func.distinct(Insight.prompt_id))).scalar() or 0)
+        
+        # Prompts with more than 1 version (improved)
+        # Count distinct prompt_ids that have more than 1 version
+        improved_prompts_subquery = db.query(
+            PromptVersion.prompt_id
+        ).group_by(PromptVersion.prompt_id).having(
+            func.count(PromptVersion.id) > 1
+        ).subquery()
+        
+        total_improved = int(db.query(func.count(improved_prompts_subquery.c.prompt_id)).scalar() or 0)
+        
+        # Ensure all values are proper types
+        return {
+            "total_prompts": total_prompts,
+            "total_by_category": total_by_category,
+            "total_analyzed": prompts_with_insights,
+            "total_improved": total_improved,
+            "total_versions": total_versions,
+            "uncategorized_count": uncategorized_count
+        }

@@ -7,6 +7,8 @@ from app.core.database import get_db as get_db_session
 from app.core.security import decode_access_token
 from app.core.llm_provider import LLMProvider
 from app.providers.openai_provider import OpenAIProvider
+from app.providers.groq_provider import GroqProvider
+from app.providers.mock_provider import MockLLMProvider
 from app.models.database import User
 
 # Security
@@ -24,28 +26,35 @@ def get_llm_provider() -> LLMProvider:
     """
     Get LLM provider instance (dependency injection).
     
-    Returns:
-        LLMProvider instance (defaults to OpenAIProvider, falls back to MockLLMProvider if API key not configured)
+    Prioridade de providers para melhoria de prompts:
+    1. GroqProvider (se GROQ_API_KEY estiver configurada)
+    2. OpenAIProvider (se OPENAI_API_KEY estiver configurada)
+    3. MockLLMProvider (fallback para desenvolvimento/testes)
     """
     import logging
     from app.core.config import settings
-    from app.providers.mock_provider import MockLLMProvider
-    
+
     logger = logging.getLogger(__name__)
-    
-    # If OpenAI API key is not configured, use MockLLMProvider
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.strip() == "":
-        logger.info("OPENAI_API_KEY not configured, using MockLLMProvider")
-        return MockLLMProvider()
-    
-    try:
-        provider = OpenAIProvider()
-        logger.info("Using OpenAIProvider")
-        return provider
-    except (ValueError, Exception) as e:
-        # If OpenAIProvider fails to initialize, fall back to MockLLMProvider
-        logger.warning(f"Failed to initialize OpenAIProvider: {e}. Falling back to MockLLMProvider")
-        return MockLLMProvider()
+
+    # 1. Preferir Groq se a chave estiver configurada
+    if settings.GROQ_API_KEY and settings.GROQ_API_KEY.strip():
+        try:
+            logger.info("Using GroqProvider as primary LLM provider")
+            return GroqProvider()
+        except Exception as e:
+            logger.warning(f"Failed to initialize GroqProvider: {e}. Falling back to other providers")
+
+    # 2. Caso contrário, usar OpenAI se disponível
+    if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.strip():
+        try:
+            logger.info("Using OpenAIProvider as primary LLM provider")
+            return OpenAIProvider()
+        except Exception as e:
+            logger.warning(f"Failed to initialize OpenAIProvider: {e}. Falling back to MockLLMProvider")
+
+    # 3. Fallback final: MockLLMProvider
+    logger.info("No valid LLM API keys configured, using MockLLMProvider")
+    return MockLLMProvider()
 
 
 def get_current_user(

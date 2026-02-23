@@ -1,0 +1,148 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { apiClient, ContextAnalyzeResponse } from '@/lib/api';
+import { Sparkles, Loader2 } from 'lucide-react';
+
+interface SmartInputProps {
+  onContextDetected?: (context: ContextAnalyzeResponse) => void;
+  placeholder?: string;
+  className?: string;
+}
+
+export default function SmartInput({
+  onContextDetected,
+  placeholder = '🔎 Digite ou cole código/descrição...',
+  className = '',
+}: SmartInputProps) {
+  const [value, setValue] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [context, setContext] = useState<ContextAnalyzeResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Clear previous timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // If value is empty, clear context
+    if (!value.trim()) {
+      setContext(null);
+      setError(null);
+      if (onContextDetected) {
+        onContextDetected({
+          detected_mode: 'unknown',
+          confidence: 0,
+          domain: 'unknown',
+          subdomain: 'unknown',
+          suggested_prompts: [],
+          total_suggestions: 0,
+        });
+      }
+      return;
+    }
+
+    // Set analyzing state
+    setAnalyzing(true);
+    setError(null);
+
+    // Debounce: wait 800ms before analyzing
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await apiClient.analyzeContext(value);
+        setContext(result);
+        setError(null);
+        
+        if (onContextDetected) {
+          onContextDetected(result);
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to analyze context';
+        setError(errorMessage);
+        setContext(null);
+        console.error('Context analysis error:', err);
+      } finally {
+        setAnalyzing(false);
+      }
+    }, 800);
+
+    // Cleanup function
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [value, onContextDetected]);
+
+  const getModeDisplay = () => {
+    if (!context) return null;
+    
+    const modeMap: Record<string, { label: string; color: string }> = {
+      'dev_delphi': { label: 'Delphi', color: 'text-[#3274d9]' },
+      'dev_oracle': { label: 'Oracle', color: 'text-red-400' },
+      'architecture': { label: 'Architecture', color: 'text-purple-400' },
+    };
+    
+    const mode = modeMap[context.detected_mode] || { label: context.detected_mode, color: 'text-[#8c8c8c]' };
+    return mode;
+  };
+
+  const modeDisplay = getModeDisplay();
+
+  return (
+    <div className={`relative ${className}`}>
+      <div className="relative">
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={placeholder}
+          rows={8}
+          className={`w-full px-4 py-3 bg-[#0b0b0f] border rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9] resize-y font-mono ${
+            context && context.confidence > 0.3
+              ? `border-${context.detected_mode === 'dev_delphi' ? '[#3274d9]' : context.detected_mode === 'dev_oracle' ? 'red-500' : 'purple-500'}/50`
+              : 'border-[#2c2c34]'
+          } transition-all`}
+        />
+        
+        {/* Status indicator */}
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          {analyzing && (
+            <div className="flex items-center gap-1.5 text-xs text-[#8c8c8c]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Analyzing...</span>
+            </div>
+          )}
+          
+          {!analyzing && context && context.confidence > 0.3 && modeDisplay && (
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-[#1f1f23] border border-[#2c2c34] ${modeDisplay.color}`}>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">{modeDisplay.label}</span>
+              <span className="text-xs opacity-70">({Math.round(context.confidence * 100)}%)</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="mt-2 text-xs text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Context info */}
+      {context && context.confidence > 0.3 && (
+        <div className="mt-2 text-xs text-[#8c8c8c]">
+          Detected: <span className="text-white">{context.domain}</span> / <span className="text-white">{context.subdomain}</span>
+          {context.total_suggestions > 0 && (
+            <span className="ml-2">
+              • {context.total_suggestions} prompt{context.total_suggestions !== 1 ? 's' : ''} found
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

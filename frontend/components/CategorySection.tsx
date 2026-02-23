@@ -8,6 +8,7 @@ import ClassifyPromptModal from './ClassifyPromptModal';
 import EditPromptModal from './EditPromptModal';
 import DeletePromptModal from './DeletePromptModal';
 import Link from 'next/link';
+import { Edit2, Trash2, Tag } from 'lucide-react';
 
 interface CategorySectionProps {
   category: GroupedPromptsByCategory;
@@ -60,17 +61,17 @@ export default function CategorySection({ category, allPrompts, onPromptUpdated 
     >
       <div className="mt-2 space-y-2">
         {Object.entries(promptsByTag).sort().map(([tag, prompts]) => (
-          <div key={tag} className="ml-4 border-l-2 border-gray-200 pl-4">
+          <div key={tag} className="ml-4 border-l-2 border-[#2c2c34] pl-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm font-medium text-gray-700">▸ {tag}</span>
-              <span className="text-xs text-gray-500">({prompts.length})</span>
+              <span className="text-xs font-medium text-[#8c8c8c]">▸ {tag}</span>
+              <span className="text-xs text-[#8c8c8c]">({prompts.length})</span>
             </div>
             <div className="ml-4 space-y-1">
               {prompts.map(prompt => (
                 <div key={prompt.id} className="flex items-center gap-2 group">
                   <Link
                     href={`/dashboard/prompts/${prompt.id}`}
-                    className="flex-1 flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 hover:underline py-1"
+                    className="flex-1 flex items-center gap-2 text-xs text-[#d8d9da] hover:text-[#3274d9] hover:underline py-1"
                   >
                     <span>{prompt.name}</span>
                     {prompt.category && (
@@ -84,10 +85,10 @@ export default function CategorySection({ category, allPrompts, onPromptUpdated 
                           e.stopPropagation();
                           setClassifyPrompt(prompt);
                         }}
-                        className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                        title="Classificar prompt"
+                        className="p-1.5 bg-[#2c2c34] text-[#d8d9da] rounded hover:bg-[#3a3a44] transition-colors"
+                        title="Classify prompt"
                       >
-                        🏷️
+                        <Tag className="w-3 h-3" />
                       </button>
                     )}
                     <button
@@ -95,20 +96,20 @@ export default function CategorySection({ category, allPrompts, onPromptUpdated 
                         e.stopPropagation();
                         setEditingPrompt(prompt);
                       }}
-                      className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                      title="Editar prompt"
+                      className="p-1.5 bg-[#2c2c34] text-[#d8d9da] rounded hover:bg-[#3a3a44] transition-colors"
+                      title="Edit prompt"
                     >
-                      ✏️
+                      <Edit2 className="w-3 h-3" />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeletingPrompt(prompt);
                       }}
-                      className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                      title="Excluir prompt"
+                      className="p-1.5 bg-[#2c2c34] text-red-400 rounded hover:bg-[#3a3a44] transition-colors"
+                      title="Delete prompt"
                     >
-                      🗑️
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -117,7 +118,7 @@ export default function CategorySection({ category, allPrompts, onPromptUpdated 
           </div>
         ))}
         {Object.keys(promptsByTag).length === 0 && (
-          <p className="text-sm text-gray-500 ml-4">Nenhum prompt nesta categoria</p>
+          <p className="text-xs text-[#8c8c8c] ml-4">No prompts in this category</p>
         )}
       </div>
       {classifyPrompt && (

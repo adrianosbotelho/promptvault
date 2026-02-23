@@ -102,3 +102,44 @@ async def analyze_prompt(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error analyzing prompt: {str(e)}"
         )
+
+
+@router.post(
+    "/run",
+    status_code=status.HTTP_200_OK
+)
+async def run_agent_worker(
+    max_prompts: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger the agent worker to analyze latest prompts.
+    
+    This endpoint runs a one-time analysis of the latest prompts without
+    starting a background worker loop.
+    
+    Args:
+        max_prompts: Maximum number of prompts to analyze (defaults to configured value)
+        
+    Returns:
+        dict with analysis results: {analyzed_count, error_count, skipped_count}
+    """
+    try:
+        from app.background.agent_worker import get_worker
+        
+        worker = get_worker()
+        result = await worker.run_manual_analysis(max_prompts=max_prompts)
+        
+        return {
+            "message": "Agent worker analysis completed",
+            "results": result
+        }
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f"Error running agent worker: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error running agent worker: {str(e)}"
+        )

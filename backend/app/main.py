@@ -34,9 +34,31 @@ def create_app() -> FastAPI:
             logger = logging.getLogger(__name__)
             logger.info("Database auto-initialization disabled. Use 'python init_db.py' to create tables manually.")
         
-        # Start background agent worker
+        # Start background agent worker (check database config first, fallback to settings)
         from app.background.agent_worker import start_worker
-        await start_worker()
+        from app.core.database import SessionLocal
+        from app.services.worker_config_service import WorkerConfigService
+        
+        db = SessionLocal()
+        try:
+            worker_config = WorkerConfigService.get_config(db)
+            if worker_config.enabled:
+                await start_worker()
+            else:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info("Agent worker is disabled. Enable it in the admin panel at /dashboard/admin/worker")
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not check worker config from database: {e}. Checking settings...")
+            # Fallback to settings
+            if settings.AGENT_WORKER_ENABLED:
+                await start_worker()
+            else:
+                logger.info("Agent worker is disabled. Set AGENT_WORKER_ENABLED=true in .env or enable in admin panel.")
+        finally:
+            db.close()
     
     @app.on_event("shutdown")
     async def shutdown_event():

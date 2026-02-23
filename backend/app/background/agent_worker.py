@@ -16,12 +16,28 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Worker configuration
-ANALYSIS_INTERVAL_MINUTES = 5
-MAX_PROMPTS_TO_ANALYZE = 5  # Analyze top 5 latest prompts
-WORKER_ENABLED = True  # Set to False to disable the worker
-MAX_RETRIES_PER_PROMPT = 2  # Maximum retries per prompt before skipping
-USE_FREE_APIS_ONLY = True  # If True, worker will only use free APIs (Groq, HuggingFace, Mock)
+# Worker configuration - reads from database, falls back to settings
+def get_worker_config_from_db(db: Session) -> dict:
+    """Get worker configuration from database, with fallback to settings."""
+    try:
+        from app.services.worker_config_service import WorkerConfigService
+        config = WorkerConfigService.get_config(db)
+        return {
+            'enabled': config.enabled,
+            'interval_minutes': config.interval_minutes,
+            'max_prompts': config.max_prompts,
+            'max_retries': config.max_retries,
+            'use_free_apis_only': config.use_free_apis_only
+        }
+    except Exception as e:
+        logger.warning(f"Could not load worker config from database: {e}. Using settings defaults.")
+        return {
+            'enabled': getattr(settings, 'AGENT_WORKER_ENABLED', False),
+            'interval_minutes': getattr(settings, 'AGENT_WORKER_INTERVAL_MINUTES', 5),
+            'max_prompts': getattr(settings, 'AGENT_WORKER_MAX_PROMPTS', 5),
+            'max_retries': getattr(settings, 'AGENT_WORKER_MAX_RETRIES', 2),
+            'use_free_apis_only': getattr(settings, 'AGENT_WORKER_USE_FREE_APIS_ONLY', True)
+        }
 
 
 class AgentWorker:
@@ -33,9 +49,15 @@ class AgentWorker:
     
     async def start(self):
         """Start the background worker."""
-        if not WORKER_ENABLED:
-            logger.info("Agent worker is disabled. Set WORKER_ENABLED=True to enable.")
-            return
+        # Check if worker is enabled (from database or settings)
+        db = SessionLocal()
+        try:
+            worker_config = get_worker_config_from_db(db)
+            if not worker_config['enabled']:
+                logger.info("Agent worker is disabled. Enable it in the admin panel or set AGENT_WORKER_ENABLED=true.")
+                return
+        finally:
+            db.close()
         
         if self.running:
             logger.warning("Agent worker is already running")
@@ -43,7 +65,7 @@ class AgentWorker:
         
         self.running = True
         self.task = asyncio.create_task(self._run_loop())
-        logger.info(f"Agent worker started. Will analyze prompts every {ANALYSIS_INTERVAL_MINUTES} minutes.")
+        logger.info("Agent worker started. Configuration will be read from database on each cycle.")
     
     async def stop(self):
         """Stop the background worker."""
@@ -63,17 +85,81 @@ class AgentWorker:
         """Main worker loop."""
         while self.running:
             try:
-                await self._analyze_latest_prompts()
+                # Read configuration from database on each cycle
+                db = SessionLocal()
+                try:
+                    worker_config = get_worker_config_from_db(db)
+                    
+                    # Check if worker is still enabled
+                    if not worker_config['enabled']:
+                        logger.info("Worker disabled in configuration. Stopping worker.")
+                        self.running = False
+                        break
+                    
+                    # Use configuration from database
+                    interval_minutes = worker_config['interval_minutes']
+                    
+                    await self._analyze_latest_prompts(
+                        max_prompts=worker_config['max_prompts'],
+                        max_retries=worker_config['max_retries'],
+                        use_free_apis_only=worker_config['use_free_apis_only']
+                    )
+                finally:
+                    db.close()
             except Exception as e:
                 logger.error(f"Error in agent worker loop: {e}", exc_info=True)
             
-            # Wait for the interval before next run
+            # Wait for the interval before next run (read from config)
             if self.running:
-                await asyncio.sleep(ANALYSIS_INTERVAL_MINUTES * 60)
+                db = SessionLocal()
+                try:
+                    worker_config = get_worker_config_from_db(db)
+                    interval_minutes = worker_config['interval_minutes']
+                finally:
+                    db.close()
+                await asyncio.sleep(interval_minutes * 60)
     
-    async def _analyze_latest_prompts(self):
+    async def run_manual_analysis(self, max_prompts: Optional[int] = None) -> dict:
+        """
+        Run a manual analysis of latest prompts (one-time execution).
+        
+        Args:
+            max_prompts: Maximum number of prompts to analyze (defaults to database config)
+            
+        Returns:
+            dict with analysis results: {analyzed_count, error_count, skipped_count}
+        """
+        # Get config from database for manual run
+        db = SessionLocal()
+        try:
+            worker_config = get_worker_config_from_db(db)
+            return await self._analyze_latest_prompts(
+                max_prompts=max_prompts or worker_config['max_prompts'],
+                max_retries=worker_config['max_retries'],
+                use_free_apis_only=worker_config['use_free_apis_only']
+            )
+        finally:
+            db.close()
+    
+    async def _analyze_latest_prompts(
+        self, 
+        max_prompts: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        use_free_apis_only: Optional[bool] = None
+    ):
         """Analyze the latest prompts."""
         db: Session = SessionLocal()
+        
+        # Get config from database if not provided
+        if max_prompts is None or max_retries is None or use_free_apis_only is None:
+            worker_config = get_worker_config_from_db(db)
+            max_prompts = max_prompts or worker_config['max_prompts']
+            max_retries = max_retries if max_retries is not None else worker_config['max_retries']
+            use_free_apis_only = use_free_apis_only if use_free_apis_only is not None else worker_config['use_free_apis_only']
+        
+        max_to_analyze = max_prompts
+        max_retries_per_prompt = max_retries
+        use_free_only = use_free_apis_only
         
         try:
             # Get latest prompts
@@ -81,14 +167,14 @@ class AgentWorker:
             
             if not prompt_list:
                 logger.debug("No prompts found to analyze")
-                return
+                return {"analyzed_count": 0, "error_count": 0, "skipped_count": 0}
             
             # Sort by updated_at descending and take top N
             sorted_prompts = sorted(
                 prompt_list,
                 key=lambda p: p.updated_at,
                 reverse=True
-            )[:MAX_PROMPTS_TO_ANALYZE]
+            )[:max_to_analyze]
             
             logger.info(f"Analyzing {len(sorted_prompts)} latest prompts...")
             
@@ -100,7 +186,7 @@ class AgentWorker:
             
             llm_provider: Optional[LLMProvider] = None
             
-            if USE_FREE_APIS_ONLY:
+            if use_free_only:
                 # Try to use free APIs only
                 if settings.GROQ_API_KEY and settings.GROQ_API_KEY.strip():
                     try:
@@ -133,12 +219,12 @@ class AgentWorker:
                 retry_count = 0
                 success = False
                 
-                while retry_count <= MAX_RETRIES_PER_PROMPT and not success:
+                while retry_count <= max_retries_per_prompt and not success:
                     try:
                         if retry_count > 0:
                             # Exponential backoff: wait 2^retry_count seconds
                             wait_time = 2 ** retry_count
-                            logger.debug(f"Retrying prompt {prompt_item.id} after {wait_time}s (attempt {retry_count + 1}/{MAX_RETRIES_PER_PROMPT + 1})")
+                            logger.debug(f"Retrying prompt {prompt_item.id} after {wait_time}s (attempt {retry_count + 1}/{max_retries_per_prompt + 1})")
                             await asyncio.sleep(wait_time)
                         
                         logger.debug(f"Analyzing prompt ID {prompt_item.id}: {prompt_item.name}")
@@ -181,19 +267,19 @@ class AgentWorker:
                         # Check if it's a rate limit error
                         is_rate_limit = "429" in error_msg or "rate limit" in error_msg.lower()
                         
-                        if is_rate_limit and retry_count <= MAX_RETRIES_PER_PROMPT:
+                        if is_rate_limit and retry_count <= max_retries_per_prompt:
                             logger.warning(
                                 f"Rate limit encountered for prompt {prompt_item.id}. "
-                                f"Will retry (attempt {retry_count}/{MAX_RETRIES_PER_PROMPT})"
+                                f"Will retry (attempt {retry_count}/{max_retries_per_prompt})"
                             )
                             # Continue to retry
                             continue
-                        elif retry_count > MAX_RETRIES_PER_PROMPT:
+                        elif retry_count > max_retries_per_prompt:
                             # Max retries reached, skip this prompt
                             error_count += 1
                             skipped_count += 1
                             logger.warning(
-                                f"Skipping prompt {prompt_item.id} after {MAX_RETRIES_PER_PROMPT} failed attempts: {error_msg}"
+                                f"Skipping prompt {prompt_item.id} after {max_retries_per_prompt} failed attempts: {error_msg}"
                             )
                             success = True  # Mark as "handled" to exit loop
                         else:
@@ -202,18 +288,27 @@ class AgentWorker:
                                 f"Error analyzing prompt {prompt_item.id} (attempt {retry_count}): {e}",
                                 exc_info=True
                             )
-                            if retry_count > MAX_RETRIES_PER_PROMPT:
+                            if retry_count > max_retries_per_prompt:
                                 error_count += 1
                                 skipped_count += 1
                                 success = True  # Exit retry loop
+            
+            result = {
+                "analyzed_count": analyzed_count,
+                "error_count": error_count,
+                "skipped_count": skipped_count
+            }
             
             logger.info(
                 f"Background analysis completed: {analyzed_count} analyzed, "
                 f"{error_count} errors, {skipped_count} skipped"
             )
             
+            return result
+            
         except Exception as e:
             logger.error(f"Error in background prompt analysis: {e}", exc_info=True)
+            return {"analyzed_count": 0, "error_count": 1, "skipped_count": 0}
         finally:
             db.close()
 

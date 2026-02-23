@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { PromptListItem, PromptCategory, PromptTag } from '@/lib/api';
+import { X } from 'lucide-react';
 
 interface ClassifyPromptModalProps {
   prompt: PromptListItem;
@@ -74,47 +75,47 @@ export default function ClassifyPromptModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1f1f23] rounded border border-[#2c2c34] shadow-xl max-w-md w-full">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Classificar Prompt
+            <h2 className="text-sm font-semibold text-white">
+              Classify Prompt
             </h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-[#8c8c8c] hover:text-white transition-colors"
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
           </div>
 
           <div className="mb-4">
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="text-xs text-white mb-1">
               <strong>{prompt.name}</strong>
             </p>
             {prompt.description && (
-              <p className="text-xs text-gray-500">{prompt.description}</p>
+              <p className="text-xs text-[#8c8c8c]">{prompt.description}</p>
             )}
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 text-red-400 rounded text-xs">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
             {/* Category Selection */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Categoria
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-2">
+                Category
               </label>
               <div className="space-y-2">
                 {CATEGORIES.map((cat) => (
                   <label
                     key={cat.value}
-                    className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="flex items-center p-3 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
                   >
                     <input
                       type="radio"
@@ -122,43 +123,43 @@ export default function ClassifyPromptModal({
                       value={cat.value}
                       checked={category === cat.value}
                       onChange={() => setCategory(cat.value)}
-                      className="mr-3"
+                      className="mr-3 accent-[#3274d9]"
                     />
-                    <span className="text-sm">{cat.label}</span>
+                    <span className="text-xs text-white">{cat.label}</span>
                   </label>
                 ))}
-                <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <label className="flex items-center p-3 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors">
                   <input
                     type="radio"
                     name="category"
                     value=""
                     checked={category === null}
                     onChange={() => setCategory(null)}
-                    className="mr-3"
+                    className="mr-3 accent-[#3274d9]"
                   />
-                  <span className="text-sm text-gray-500">Sem Categoria</span>
+                  <span className="text-xs text-[#8c8c8c]">No Category</span>
                 </label>
               </div>
             </div>
 
             {/* Tags Selection */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Tags (múltipla seleção)
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-2">
+                Tags (multiple selection)
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {TAGS.map((tag) => (
                   <label
                     key={tag.value}
-                    className="flex items-center p-2 border rounded cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="flex items-center p-2 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
                   >
                     <input
                       type="checkbox"
                       checked={tags.includes(tag.value)}
                       onChange={() => handleTagToggle(tag.value)}
-                      className="mr-2"
+                      className="mr-2 accent-[#3274d9]"
                     />
-                    <span className="text-sm">{tag.label}</span>
+                    <span className="text-xs text-white">{tag.label}</span>
                   </label>
                 ))}
               </div>
@@ -169,16 +170,16 @@ export default function ClassifyPromptModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                className="flex-1 px-3 py-2 bg-[#2c2c34] text-[#d8d9da] rounded text-sm font-medium hover:bg-[#3a3a44] transition-colors"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-3 py-2 bg-[#3274d9] text-white rounded text-sm font-medium hover:bg-[#1f60c4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Salvando...' : 'Salvar'}
+                {loading ? 'Saving...' : 'Save'}
               </button>
             </div>
           </form>
