@@ -126,9 +126,9 @@ export interface InsightListItem {
   pattern_count: number;
   warning_count: number;
   is_read: boolean;
-  improvement_ideas?: any[];
-  reusable_patterns?: any[];
-  warnings?: any[];
+  improvement_ideas?: Record<string, unknown>[];
+  reusable_patterns?: Record<string, unknown>[];
+  warnings?: Record<string, unknown>[];
 }
 
 export interface WorkerConfig {
@@ -232,7 +232,7 @@ export const apiClient = {
     return apiFetch(`/api/v1/agent/analyze/${promptId}`, { method: 'POST' });
   },
 
-  runAgentWorker(maxPrompts?: number): Promise<any> {
+  runAgentWorker(maxPrompts?: number): Promise<Record<string, unknown>> {
     const params = maxPrompts ? `?max_prompts=${maxPrompts}` : '';
     return apiFetch(`/api/v1/agent/run${params}`, { method: 'POST' });
   },
@@ -247,7 +247,7 @@ export const apiClient = {
     return apiFetch(`/api/v1/insights${qs ? `?${qs}` : ''}`);
   },
 
-  markInsightAsRead(insightId: number): Promise<any> {
+  markInsightAsRead(insightId: number): Promise<Record<string, unknown>> {
     return apiFetch(`/api/v1/insights/${insightId}/read`, { method: 'POST' });
   },
 
