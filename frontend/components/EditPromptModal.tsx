@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { PromptListItem, PromptCategory, PromptTag } from '@/lib/api';
-import { X } from 'lucide-react';
+import { PromptListItem, PromptCategory, PromptTag, Prompt, apiClient } from '@/lib/api';
+import { X, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface EditPromptModalProps {
   prompt: PromptListItem;
@@ -35,6 +35,7 @@ export default function EditPromptModal({
 }: EditPromptModalProps) {
   const [name, setName] = useState(prompt.name);
   const [description, setDescription] = useState(prompt.description || '');
+  const [content, setContent] = useState('');
   const [category, setCategory] = useState<PromptCategory | null>(
     (prompt.category as PromptCategory) || null
   );
@@ -42,16 +43,47 @@ export default function EditPromptModal({
     (prompt.tags as PromptTag[]) || []
   );
   const [loading, setLoading] = useState(false);
+  const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
 
+  // Load full prompt data when modal opens
   useEffect(() => {
-    if (isOpen) {
-      setName(prompt.name);
-      setDescription(prompt.description || '');
-      setCategory((prompt.category as PromptCategory) || null);
-      setTags((prompt.tags as PromptTag[]) || []);
+    if (isOpen && prompt.id) {
+      loadFullPrompt();
     }
-  }, [isOpen, prompt]);
+  }, [isOpen, prompt.id]);
+
+  const loadFullPrompt = async () => {
+    try {
+      setLoadingPrompt(true);
+      setError(null);
+      
+      // Load full prompt with versions
+      const fullPrompt: Prompt = await apiClient.getPrompt(prompt.id);
+      
+      // Set form fields from prompt metadata
+      setName(fullPrompt.name);
+      setDescription(fullPrompt.description || '');
+      setCategory((fullPrompt.category as PromptCategory) || null);
+      setTags((fullPrompt.tags as PromptTag[]) || []);
+      
+      // Get content from latest version
+      if (fullPrompt.versions && fullPrompt.versions.length > 0) {
+        const latestVersion = fullPrompt.versions.reduce((latest, current) => 
+          current.version > latest.version ? current : latest
+        );
+        setContent(latestVersion.content || '');
+      } else {
+        setContent('');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load prompt');
+    } finally {
+      setLoadingPrompt(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -71,10 +103,11 @@ export default function EditPromptModal({
     setLoading(true);
 
     try {
-      const { apiClient } = await import('@/lib/api');
+      // Update prompt with all fields including content
       await apiClient.updatePrompt(prompt.id, {
         name: name.trim(),
         description: description.trim() || undefined,
+        content: content.trim() || undefined, // Include content to create new version
         category: category || undefined,
         tags: tags.length > 0 ? tags : undefined,
       });
@@ -140,52 +173,114 @@ export default function EditPromptModal({
               />
             </div>
 
-            {/* Category Selection */}
+            {/* Content */}
             <div>
-              <label className="block text-xs font-medium text-[#8c8c8c] mb-2">
-                Category
+              <label className="block text-xs font-medium text-[#8c8c8c] mb-1">
+                Content *
               </label>
-              <div className="space-y-2">
-                {CATEGORIES.map((cat) => (
-                  <label
-                    key={cat.value || 'none'}
-                    className="flex items-center p-3 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
-                  >
-                    <input
-                      type="radio"
-                      name="category"
-                      value={cat.value || ''}
-                      checked={category === cat.value}
-                      onChange={() => setCategory(cat.value)}
-                      className="mr-3 accent-[#3274d9]"
-                    />
-                    <span className="text-xs text-white">{cat.label}</span>
-                  </label>
-                ))}
-              </div>
+              {loadingPrompt ? (
+                <div className="w-full px-3 py-8 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-[#8c8c8c] flex items-center justify-center">
+                  Loading content...
+                </div>
+              ) : (
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  rows={12}
+                  required
+                  className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9] font-mono"
+                  placeholder="Prompt content..."
+                />
+              )}
+              <p className="mt-1 text-xs text-[#8c8c8c]">
+                Editing content will create a new version of the prompt.
+              </p>
             </div>
 
-            {/* Tags Selection */}
+            {/* Category Selection - Collapsible */}
             <div>
-              <label className="block text-xs font-medium text-[#8c8c8c] mb-2">
-                Tags (multiple selection)
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {TAGS.map((tag) => (
-                  <label
-                    key={tag.value}
-                    className="flex items-center p-2 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={tags.includes(tag.value)}
-                      onChange={() => handleTagToggle(tag.value)}
-                      className="mr-2 accent-[#3274d9]"
-                    />
-                    <span className="text-xs text-white">{tag.label}</span>
-                  </label>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryOpen(!categoryOpen)}
+                className="w-full flex items-center justify-between p-3 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white hover:bg-[#1f1f23] transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-[#8c8c8c]">Category:</span>
+                  <span className="text-xs text-white">
+                    {category ? CATEGORIES.find(c => c.value === category)?.label || 'None' : 'Sem Categoria'}
+                  </span>
+                </div>
+                {categoryOpen ? (
+                  <ChevronUp className="w-4 h-4 text-[#8c8c8c]" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-[#8c8c8c]" />
+                )}
+              </button>
+              
+              {categoryOpen && (
+                <div className="mt-2 space-y-2 border border-[#2c2c34] rounded p-3 bg-[#0b0b0f]">
+                  {CATEGORIES.map((cat) => (
+                    <label
+                      key={cat.value || 'none'}
+                      className="flex items-center p-2 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
+                    >
+                      <input
+                        type="radio"
+                        name="category"
+                        value={cat.value || ''}
+                        checked={category === cat.value}
+                        onChange={() => setCategory(cat.value)}
+                        className="mr-3 accent-[#3274d9]"
+                      />
+                      <span className="text-xs text-white">{cat.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Tags Selection - Collapsible */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setTagsOpen(!tagsOpen)}
+                className="w-full flex items-center justify-between p-3 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white hover:bg-[#1f1f23] transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-[#8c8c8c]">Tags:</span>
+                  <span className="text-xs text-white">
+                    {tags.length > 0 
+                      ? tags.map(t => TAGS.find(tag => tag.value === t)?.label).filter(Boolean).join(', ') || 'None'
+                      : 'Nenhuma tag selecionada'}
+                  </span>
+                </div>
+                {tagsOpen ? (
+                  <ChevronUp className="w-4 h-4 text-[#8c8c8c]" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-[#8c8c8c]" />
+                )}
+              </button>
+              
+              {tagsOpen && (
+                <div className="mt-2 border border-[#2c2c34] rounded p-3 bg-[#0b0b0f]">
+                  <div className="grid grid-cols-2 gap-2">
+                    {TAGS.map((tag) => (
+                      <label
+                        key={tag.value}
+                        className="flex items-center p-2 border border-[#2c2c34] rounded cursor-pointer hover:bg-[#2c2c34] transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={tags.includes(tag.value)}
+                          onChange={() => handleTagToggle(tag.value)}
+                          className="mr-2 accent-[#3274d9]"
+                        />
+                        <span className="text-xs text-white">{tag.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -199,7 +294,7 @@ export default function EditPromptModal({
               </button>
               <button
                 type="submit"
-                disabled={loading || !name.trim()}
+                disabled={loading || loadingPrompt || !name.trim() || !content.trim()}
                 className="flex-1 px-3 py-2 bg-[#3274d9] text-white rounded text-sm font-medium hover:bg-[#1f60c4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Saving...' : 'Save Changes'}

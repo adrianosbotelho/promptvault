@@ -1,19 +1,48 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiClient, CreatePromptRequest } from '@/lib/api';
 
 interface NewPromptFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
+  initialContent?: string;
+  initialCategory?: string;
 }
 
-export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProps) {
+const CATEGORIES: { value: string | null; label: string }[] = [
+  { value: null, label: 'Sem Categoria' },
+  { value: 'delphi', label: 'Delphi Development' },
+  { value: 'oracle', label: 'Oracle Development' },
+  { value: 'arquitetura', label: 'Architecture' },
+];
+
+export default function NewPromptForm({ 
+  onSuccess, 
+  onCancel, 
+  initialContent,
+  initialCategory 
+}: NewPromptFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(initialContent || '');
+  const [category, setCategory] = useState<string | null>(initialCategory || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Update content when initialContent changes
+  useEffect(() => {
+    if (initialContent) {
+      setContent(initialContent);
+    }
+  }, [initialContent]);
+
+  // Update category when initialCategory changes
+  useEffect(() => {
+    if (initialCategory) {
+      setCategory(initialCategory);
+    }
+  }, [initialCategory]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +61,7 @@ export default function NewPromptForm({ onSuccess, onCancel }: NewPromptFormProp
         title: title.trim(), // Also include title as alias
         description: description.trim() || undefined,
         content: content.trim(),
+        category: category || undefined,
       };
 
       await apiClient.createPrompt(promptData);

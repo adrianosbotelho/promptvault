@@ -12,9 +12,9 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
-import Link from 'next/link';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -39,9 +39,18 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
     router.push('/login');
   };
 
+  const handleNavClick = (href: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    console.log('Navigating to:', href, 'Current pathname:', pathname);
+    router.push(href);
+  };
+
   // Determine active state safely
   const isDashboardActive = mounted && pathname === '/dashboard';
-  const isPromptViewActive = mounted && pathname?.startsWith('/dashboard/prompts') && pathname !== '/dashboard/prompts';
+  const isPromptViewActive = mounted && pathname?.startsWith('/dashboard/prompts');
   const isInsightsActive = mounted && pathname === '/dashboard/insights';
   const isAgentActive = mounted && pathname === '/dashboard/agent';
   const isSettingsActive = mounted && pathname === '/dashboard/admin/worker';
@@ -117,9 +126,10 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
               
               return (
                 <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded text-sm transition-all ${
+                  <button
+                    type="button"
+                    onClick={(e) => handleNavClick(item.href, e)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm transition-all text-left ${
                       item.active
                         ? 'bg-[#2c2c34] text-white'
                         : isContextHighlighted
@@ -133,7 +143,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
                       <Sparkles className="w-3.5 h-3.5 flex-shrink-0 animate-pulse" />
                     )}
                     {item.active && !isContextHighlighted && <ChevronRight className="w-4 h-4 flex-shrink-0" />}
-                  </Link>
+                  </button>
                 </li>
               );
             })}
@@ -141,9 +151,10 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
 
           {/* Settings Section */}
           <div className="mt-4 pt-4 border-t border-[#2c2c34]">
-            <Link
-              href="/dashboard/admin/worker"
-              className={`flex items-center gap-3 px-3 py-2 rounded text-sm transition-colors ${
+            <button
+              type="button"
+              onClick={(e) => handleNavClick('/dashboard/admin/worker', e)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm transition-colors text-left ${
                 isSettingsActive
                   ? 'bg-[#2c2c34] text-white'
                   : 'text-[#d8d9da] hover:bg-[#2c2c34] hover:text-white'
@@ -152,7 +163,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
               <Settings className="w-4 h-4 flex-shrink-0" />
               <span className="flex-1">Settings</span>
               {isSettingsActive && <ChevronRight className="w-4 h-4 flex-shrink-0" />}
-            </Link>
+            </button>
           </div>
         </nav>
 

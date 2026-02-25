@@ -63,11 +63,10 @@ class PromptVersion(Base):
     )
     version = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
-    embedding = Column(
-        PG_ARRAY(REAL),
-        nullable=True,
-        comment="Vector embedding with dimension 1536 using pgvector"
-    )
+    # Note: embedding column is defined as vector(1536) in database via pgvector
+    # We don't define it in SQLAlchemy model to avoid type conflicts
+    # Embeddings are always set/updated using raw SQL
+    # embedding = Column(...)  # Intentionally not defined - use raw SQL only
     improved_by = Column(
         String,
         nullable=True,

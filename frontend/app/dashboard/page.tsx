@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient, PromptListItem, SemanticSearchResult, GroupedPromptsResponse, PromptStats } from '@/lib/api';
 import NewPromptForm from '@/components/NewPromptForm';
@@ -36,6 +36,37 @@ export default function Dashboard() {
   const [stats, setStats] = useState<PromptStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [detectedContext, setDetectedContext] = useState<ContextAnalyzeResponse | null>(null);
+  const [newPromptInitialData, setNewPromptInitialData] = useState<{ content?: string; category?: string } | null>(null);
+  const smartInputRef = useRef<{ getValue: () => string; getContext: () => ContextAnalyzeResponse | null; clear: () => void } | null>(null);
+
+  // Memoize the context detection callback to prevent infinite loops
+  const handleContextDetected = useCallback((context: ContextAnalyzeResponse) => {
+    setDetectedContext(context);
+  }, []);
+
+  const handleSmartInputNewPrompt = () => {
+    const value = smartInputRef.current?.getValue() || '';
+    const context = smartInputRef.current?.getContext();
+    
+    // Map detected_mode to category
+    let category: string | undefined;
+    if (context && context.confidence > 0.3) {
+      if (context.detected_mode === 'dev_delphi') {
+        category = 'delphi';
+      } else if (context.detected_mode === 'dev_oracle') {
+        category = 'oracle';
+      } else if (context.detected_mode === 'architecture') {
+        category = 'arquitetura';
+      }
+    }
+    
+    // Set initial values for the form
+    setNewPromptInitialData({
+      content: value,
+      category: category,
+    });
+    setShowNewForm(true);
+  };
 
   useEffect(() => {
     loadPrompts();
@@ -150,11 +181,15 @@ export default function Dashboard() {
   };
 
   const handleNewPrompt = () => {
+    setNewPromptInitialData(null);
     setShowNewForm(true);
   };
 
   const handleFormSuccess = () => {
     setShowNewForm(false);
+    setNewPromptInitialData(null);
+    // Clear Smart Input after successful prompt creation
+    smartInputRef.current?.clear();
     loadPrompts();
     loadStats();
   };
@@ -275,25 +310,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Smart Input Card */}
-        <div className="bg-[#1f1f23] rounded border border-[#2c2c34] p-4">
-          <div className="mb-3">
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#3274d9]" />
-              Smart Input
-            </h2>
-            <p className="text-xs text-[#8c8c8c] mt-1">
-              Digite ou cole código/descrição para detecção automática de contexto
-            </p>
-          </div>
-          <SmartInput
-            onContextDetected={(context) => {
-              setDetectedContext(context);
-            }}
-            placeholder="🔎 Digite ou cole código/descrição..."
-          />
-        </div>
-
         {/* Category Statistics */}
         {stats && Object.keys(stats.total_by_category).length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -346,6 +362,35 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* Smart Input Card */}
+        <div className="bg-[#1f1f23] rounded border border-[#2c2c34] p-4">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#3274d9]" />
+              Smart Input
+            </h2>
+            <p className="text-xs text-[#8c8c8c] mt-1">
+              Digite ou cole código/descrição para detecção automática de contexto
+            </p>
+          </div>
+          <SmartInput
+            onContextDetected={handleContextDetected}
+            placeholder="🔎 Digite ou cole código/descrição..."
+            inputRef={smartInputRef}
+          />
+          {detectedContext && detectedContext.confidence > 0.3 && (
+            <div className="mt-3 pt-3 border-t border-[#2c2c34]">
+              <button
+                onClick={handleSmartInputNewPrompt}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#3274d9] text-white rounded text-sm font-medium hover:bg-[#1f60c4] transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>New Prompt (categorizado)</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Search and Actions Card */}
         <div className="bg-[#1f1f23] rounded border border-[#2c2c34] p-4">
@@ -451,7 +496,12 @@ export default function Dashboard() {
         {/* New Prompt Form */}
         {showNewForm && (
           <div className="bg-[#1f1f23] rounded border border-[#2c2c34] p-4">
-            <NewPromptForm onSuccess={handleFormSuccess} onCancel={handleFormCancel} />
+            <NewPromptForm 
+              onSuccess={handleFormSuccess} 
+              onCancel={handleFormCancel}
+              initialContent={newPromptInitialData?.content}
+              initialCategory={newPromptInitialData?.category}
+            />
           </div>
         )}
 

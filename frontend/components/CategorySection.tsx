@@ -10,6 +10,50 @@ import DeletePromptModal from './DeletePromptModal';
 import Link from 'next/link';
 import { Edit2, Trash2, Tag } from 'lucide-react';
 
+// Tag color mapping (same as PromptCard)
+const getTagColor = (tag: string): { bg: string; text: string; border: string } => {
+  const tagLower = tag.toLowerCase();
+  
+  const colorMap: Record<string, { bg: string; text: string; border: string }> = {
+    'implementation': {
+      bg: 'bg-blue-500/20',
+      text: 'text-blue-400',
+      border: 'border-blue-500/50'
+    },
+    'debug': {
+      bg: 'bg-red-500/20',
+      text: 'text-red-400',
+      border: 'border-red-500/50'
+    },
+    'architecture': {
+      bg: 'bg-purple-500/20',
+      text: 'text-purple-400',
+      border: 'border-purple-500/50'
+    },
+    'performance': {
+      bg: 'bg-green-500/20',
+      text: 'text-green-400',
+      border: 'border-green-500/50'
+    },
+    'analysis': {
+      bg: 'bg-yellow-500/20',
+      text: 'text-yellow-400',
+      border: 'border-yellow-500/50'
+    },
+    'improvement': {
+      bg: 'bg-cyan-500/20',
+      text: 'text-cyan-400',
+      border: 'border-cyan-500/50'
+    }
+  };
+  
+  return colorMap[tagLower] || {
+    bg: 'bg-[#2c2c34]',
+    text: 'text-[#8c8c8c]',
+    border: 'border-[#3a3a44]'
+  };
+};
+
 interface CategorySectionProps {
   category: GroupedPromptsByCategory;
   allPrompts: PromptListItem[];
@@ -60,12 +104,18 @@ export default function CategorySection({ category, allPrompts, onPromptUpdated 
       defaultOpen={true}
     >
       <div className="mt-2 space-y-2">
-        {Object.entries(promptsByTag).sort().map(([tag, prompts]) => (
-          <div key={tag} className="ml-4 border-l-2 border-[#2c2c34] pl-4">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-medium text-[#8c8c8c]">▸ {tag}</span>
-              <span className="text-xs text-[#8c8c8c]">({prompts.length})</span>
-            </div>
+        {Object.entries(promptsByTag).sort().map(([tag, prompts]) => {
+          const tagColor = tag === 'Untagged' 
+            ? { bg: 'bg-[#2c2c34]', text: 'text-[#8c8c8c]', border: 'border-[#3a3a44]' }
+            : getTagColor(tag);
+          return (
+            <div key={tag} className="ml-4 border-l-2 border-[#2c2c34] pl-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${tagColor.bg} ${tagColor.text} border ${tagColor.border}`}>
+                  ▸ {tag}
+                </span>
+                <span className="text-xs text-[#8c8c8c]">({prompts.length})</span>
+              </div>
             <div className="ml-4 space-y-1">
               {prompts.map(prompt => (
                 <div key={prompt.id} className="flex items-center gap-2 group">
@@ -116,7 +166,8 @@ export default function CategorySection({ category, allPrompts, onPromptUpdated 
               ))}
             </div>
           </div>
-        ))}
+          );
+        })}
         {Object.keys(promptsByTag).length === 0 && (
           <p className="text-xs text-[#8c8c8c] ml-4">No prompts in this category</p>
         )}

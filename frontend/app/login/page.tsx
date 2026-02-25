@@ -11,14 +11,19 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
 
   useEffect(() => {
-    // If already authenticated, redirect to dashboard
-    if (isAuthenticated()) {
-      const redirect = searchParams.get('redirect') || '/dashboard';
-      router.push(redirect);
+    // Only check authentication once on mount
+    if (!hasCheckedAuth) {
+      setHasCheckedAuth(true);
+      // If already authenticated, redirect to dashboard
+      if (isAuthenticated()) {
+        const redirect = searchParams.get('redirect') || '/dashboard';
+        router.replace(redirect); // Use replace instead of push to avoid history issues
+      }
     }
-  }, [router, searchParams]);
+  }, [router, searchParams, hasCheckedAuth]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,11 +32,12 @@ function LoginForm() {
 
     try {
       await login(email, password);
+      // Wait a bit to ensure cookie is set
+      await new Promise(resolve => setTimeout(resolve, 100));
       const redirect = searchParams.get('redirect') || '/dashboard';
-      router.push(redirect);
+      router.replace(redirect); // Use replace instead of push to avoid history issues
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
       setLoading(false);
     }
   };

@@ -164,7 +164,9 @@ export default function PromptDetailPage() {
     );
   }
 
-  const latestVersion = getLatestVersion(prompt.versions);
+  const latestVersion = prompt.versions && prompt.versions.length > 0 
+    ? getLatestVersion(prompt.versions) 
+    : null;
 
   return (
     <AppShell>

@@ -3,7 +3,7 @@
 import { PromptListItem } from '@/lib/api';
 import CategoryBadge from './CategoryBadge';
 import Link from 'next/link';
-import { FileText, Edit2, Trash2, Sparkles, Clock } from 'lucide-react';
+import { FileText, Edit2, Trash2, Sparkles, Clock, Tag, CheckCircle2 } from 'lucide-react';
 
 interface PromptCardProps {
   prompt: PromptListItem;
@@ -14,6 +14,50 @@ interface PromptCardProps {
   similarity?: number;
 }
 
+// Tag color mapping
+const getTagColor = (tag: string): { bg: string; text: string; border: string } => {
+  const tagLower = tag.toLowerCase();
+  
+  const colorMap: Record<string, { bg: string; text: string; border: string }> = {
+    'implementation': {
+      bg: 'bg-blue-500/20',
+      text: 'text-blue-400',
+      border: 'border-blue-500/50'
+    },
+    'debug': {
+      bg: 'bg-red-500/20',
+      text: 'text-red-400',
+      border: 'border-red-500/50'
+    },
+    'architecture': {
+      bg: 'bg-purple-500/20',
+      text: 'text-purple-400',
+      border: 'border-purple-500/50'
+    },
+    'performance': {
+      bg: 'bg-green-500/20',
+      text: 'text-green-400',
+      border: 'border-green-500/50'
+    },
+    'analysis': {
+      bg: 'bg-yellow-500/20',
+      text: 'text-yellow-400',
+      border: 'border-yellow-500/50'
+    },
+    'improvement': {
+      bg: 'bg-cyan-500/20',
+      text: 'text-cyan-400',
+      border: 'border-cyan-500/50'
+    }
+  };
+  
+  return colorMap[tagLower] || {
+    bg: 'bg-[#2c2c34]',
+    text: 'text-[#d8d9da]',
+    border: 'border-[#3a3a44]'
+  };
+};
+
 export default function PromptCard({
   prompt,
   onEdit,
@@ -22,8 +66,24 @@ export default function PromptCard({
   improving = false,
   similarity,
 }: PromptCardProps) {
+  // Check if prompt was improved
+  const isImproved = !!prompt.provider;
+  
   return (
-    <div className="bg-[#1f1f23] rounded border border-[#2c2c34] p-4 hover:border-[#3274d9] transition-all group">
+    <div className={`bg-[#1f1f23] rounded border p-4 transition-all group relative ${
+      isImproved 
+        ? 'border-[#3274d9]/60 shadow-[0_0_0_1px_rgba(50,116,217,0.1)] hover:border-[#3274d9] hover:shadow-[0_0_0_2px_rgba(50,116,217,0.2)]' 
+        : 'border-[#2c2c34] hover:border-[#3274d9]'
+    }`}>
+      {/* Improved badge */}
+      {isImproved && (
+        <div className="absolute bottom-2 right-2">
+          <div className="px-2 py-0.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full text-xs font-semibold flex items-center gap-1 shadow-lg">
+            <Sparkles className="w-3 h-3" />
+            <span>Improved</span>
+          </div>
+        </div>
+      )}
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <Link
@@ -48,12 +108,45 @@ export default function PromptCard({
               {prompt.description}
             </p>
           )}
-          <div className="flex items-center gap-3 text-xs text-[#8c8c8c]">
+          
+          {/* Tags */}
+          {prompt.tags && prompt.tags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <Tag className="w-3 h-3 text-[#8c8c8c]" />
+              {prompt.tags.map((tag, idx) => {
+                const tagColor = getTagColor(tag);
+                return (
+                  <span
+                    key={idx}
+                    className={`px-1.5 py-0.5 ${tagColor.bg} ${tagColor.text} rounded text-xs border ${tagColor.border} font-medium`}
+                  >
+                    {tag}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 text-xs text-[#8c8c8c] flex-wrap">
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />
               v{prompt.latest_version || 1}
             </span>
             <span>{new Date(prompt.updated_at).toLocaleDateString()}</span>
+            {prompt.provider && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 bg-[#3274d9]/20 text-[#3274d9] rounded">
+                <CheckCircle2 className="w-3 h-3" />
+                <span className="text-xs font-medium">
+                  {prompt.provider === 'MockLLMProvider' 
+                    ? 'Mock' 
+                    : prompt.provider === 'GroqProvider'
+                    ? 'Groq'
+                    : prompt.provider === 'OpenAIProvider'
+                    ? 'OpenAI'
+                    : 'Improved'}
+                </span>
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -117,38 +117,42 @@ class PromptService:
         # Generate embedding for the initial content
         embedding = PromptService._generate_embedding_sync(prompt_data.content)
         
-        # Create initial version (version 1)
-        # Don't set embedding directly if it's a vector type - we'll update it with raw SQL
-        db_version = PromptVersion(
-            prompt_id=db_prompt.id,
-            version=1,
-            content=prompt_data.content,
-            embedding=None,  # Set to None initially to avoid vector type issues
-            created_at=datetime.utcnow()
-        )
-        db.add(db_version)
-        db.flush()  # Flush to get the version ID
-        
-        # Update embedding using raw SQL if embedding was generated
+        # Create initial version (version 1) using raw SQL to avoid SQLAlchemy vector type issues
+        # This completely bypasses the ORM for the version insertion
+        created_at = datetime.utcnow()
         if embedding:
-            try:
-                # Convert embedding list to string format for PostgreSQL vector type
-                embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-                db.execute(
-                    text("""
-                        UPDATE prompt_versions 
-                        SET embedding = :embedding::vector(1536)
-                        WHERE id = :version_id
-                    """),
-                    {
-                        "embedding": embedding_str,
-                        "version_id": db_version.id
-                    }
-                )
-            except Exception as e:
-                logger.warning(f"Could not set embedding using vector type: {e}")
-                # If vector update fails, just continue without embedding
-                # The prompt will still be created successfully
+            # Convert embedding list to string format for PostgreSQL vector type
+            embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+            # Insert version with embedding using raw SQL
+            result = db.execute(
+                text("""
+                    INSERT INTO prompt_versions (prompt_id, version, content, embedding, created_at)
+                    VALUES (:prompt_id, 1, :content, :embedding::vector(1536), :created_at)
+                    RETURNING id
+                """),
+                {
+                    "prompt_id": db_prompt.id,
+                    "content": prompt_data.content,
+                    "embedding": embedding_str,
+                    "created_at": created_at
+                }
+            )
+        else:
+            # Insert version without embedding using raw SQL
+            result = db.execute(
+                text("""
+                    INSERT INTO prompt_versions (prompt_id, version, content, created_at)
+                    VALUES (:prompt_id, 1, :content, :created_at)
+                    RETURNING id
+                """),
+                {
+                    "prompt_id": db_prompt.id,
+                    "content": prompt_data.content,
+                    "created_at": created_at
+                }
+            )
+        version_id = result.scalar()
+        logger.debug(f"Created prompt version {version_id} for prompt {db_prompt.id}")
         
         db.commit()
         db.refresh(db_prompt)
@@ -208,39 +212,47 @@ class PromptService:
             # Generate embedding for the new content
             embedding = PromptService._generate_embedding_sync(prompt_data.content)
             
-            # Create new version
-            # Don't set embedding directly if it's a vector type - we'll update it with raw SQL
-            new_version = PromptVersion(
-                prompt_id=prompt_id,
-                version=latest_version + 1,
-                content=prompt_data.content,
-                embedding=None,  # Set to None initially to avoid vector type issues
-                improved_by=improved_by,  # Tag with provider if provided
-                created_at=datetime.utcnow()
-            )
-            db.add(new_version)
-            db.flush()  # Flush to get the version ID
+            # Create new version using raw SQL to avoid SQLAlchemy vector type issues
+            new_version_num = latest_version + 1
+            created_at = datetime.utcnow()
             
-            # Update embedding using raw SQL if embedding was generated
             if embedding:
-                try:
-                    # Convert embedding list to string format for PostgreSQL vector type
-                    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-                    db.execute(
-                        text("""
-                            UPDATE prompt_versions 
-                            SET embedding = :embedding::vector(1536)
-                            WHERE id = :version_id
-                        """),
-                        {
-                            "embedding": embedding_str,
-                            "version_id": new_version.id
-                        }
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not set embedding using vector type: {e}")
-                    # If vector update fails, just continue without embedding
-                    # The version will still be created successfully
+                # Convert embedding list to string format for PostgreSQL vector type
+                embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+                # Insert version with embedding using raw SQL
+                result = db.execute(
+                    text("""
+                        INSERT INTO prompt_versions (prompt_id, version, content, embedding, improved_by, created_at)
+                        VALUES (:prompt_id, :version, :content, :embedding::vector(1536), :improved_by, :created_at)
+                        RETURNING id
+                    """),
+                    {
+                        "prompt_id": prompt_id,
+                        "version": new_version_num,
+                        "content": prompt_data.content,
+                        "embedding": embedding_str,
+                        "improved_by": improved_by,
+                        "created_at": created_at
+                    }
+                )
+            else:
+                # Insert version without embedding using raw SQL
+                result = db.execute(
+                    text("""
+                        INSERT INTO prompt_versions (prompt_id, version, content, improved_by, created_at)
+                        VALUES (:prompt_id, :version, :content, :improved_by, :created_at)
+                        RETURNING id
+                    """),
+                    {
+                        "prompt_id": prompt_id,
+                        "version": new_version_num,
+                        "content": prompt_data.content,
+                        "improved_by": improved_by,
+                        "created_at": created_at
+                    }
+                )
+            version_id = result.scalar()
+            logger.debug(f"Created prompt version {version_id} (v{new_version_num}) for prompt {prompt_id}")
         
         # Update timestamp
         db_prompt.updated_at = datetime.utcnow()
@@ -269,6 +281,16 @@ class PromptService:
             PromptVersion.prompt_id == prompt.id
         ).scalar()
         
+        # Get improved_by from the latest version
+        improved_by = None
+        if latest_version:
+            latest_version_obj = db.query(PromptVersion).filter(
+                PromptVersion.prompt_id == prompt.id,
+                PromptVersion.version == latest_version
+            ).order_by(PromptVersion.created_at.desc()).first()
+            if latest_version_obj:
+                improved_by = latest_version_obj.improved_by
+        
         return PromptListItem(
             id=prompt.id,
             name=prompt.name,
@@ -277,7 +299,8 @@ class PromptService:
             tags=prompt.tags,  # Already stored as strings in DB
             created_at=prompt.created_at,
             updated_at=prompt.updated_at,
-            latest_version=latest_version
+            latest_version=latest_version,
+            provider=improved_by  # Add provider field
         )
     
     @staticmethod

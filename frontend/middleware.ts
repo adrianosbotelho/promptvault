@@ -32,10 +32,12 @@ export function middleware(request: NextRequest) {
   }
 
   // If user is on login page and has token, redirect to dashboard
+  // But only if token is valid (not empty)
   if (isPublicRoute && pathname === '/login') {
     const token = request.cookies.get(TOKEN_COOKIE);
-    if (token && token.value) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+    if (token && token.value && token.value.trim() !== '') {
+      const dashboardUrl = new URL('/dashboard', request.url);
+      return NextResponse.redirect(dashboardUrl);
     }
   }
 

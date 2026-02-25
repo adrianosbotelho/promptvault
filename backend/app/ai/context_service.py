@@ -161,9 +161,10 @@ class ContextService:
             search_results = []
         
         # Step 4: Return combined result
+        # Note: search_results is already filtered by similarity threshold
         return ContextServiceResult(
             context=context,
-            suggested_prompts=filtered_results,
+            suggested_prompts=search_results,
             target_identifier=target_identifier
         )
     

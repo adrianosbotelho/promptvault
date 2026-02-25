@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, status, HTTPException
-from sqlalchemy.orm import Session, joinedload, defer
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy import text, func
 import logging
@@ -232,9 +232,9 @@ async def get_prompt(
     """
     try:
         # Use joinedload to eagerly load versions
-        # Defer embedding column to avoid vector type issues with SQLAlchemy
+        # Note: embedding column is not in SQLAlchemy model, so we don't need to defer it
         prompt = db.query(Prompt).options(
-            joinedload(Prompt.versions).defer(PromptVersion.embedding)
+            joinedload(Prompt.versions)
         ).filter(Prompt.id == prompt_id).first()
         
         if not prompt:
@@ -243,10 +243,8 @@ async def get_prompt(
                 detail=f"Prompt with id {prompt_id} not found"
             )
         
-        # Set embeddings to None - pgvector type cannot be easily converted to array
-        # Embeddings are not needed for prompt display, only for semantic search
-        for version in prompt.versions:
-            version.embedding = None
+        # Embeddings are not loaded since they're not in the SQLAlchemy model
+        # This is fine - embeddings are only needed for semantic search, not for display
         
         return prompt
     except HTTPException:
@@ -269,9 +267,10 @@ async def update_prompt(
     try:
         prompt = PromptService.update_prompt(db, prompt_id, prompt_data)
         
-        # Reload prompt with versions, deferring embedding to avoid vector type issues
+        # Reload prompt with versions
+        # Note: embedding column is not in SQLAlchemy model, so we don't need to defer it
         prompt = db.query(Prompt).options(
-            joinedload(Prompt.versions).defer(PromptVersion.embedding)
+            joinedload(Prompt.versions)
         ).filter(Prompt.id == prompt_id).first()
         
         if not prompt:
@@ -280,11 +279,8 @@ async def update_prompt(
                 detail=f"Prompt with id {prompt_id} not found"
             )
         
-        # Set embeddings to None - we don't need them for category/tag updates
-        # The embedding column uses pgvector type which can't be easily converted to array
-        # Since we're only updating metadata (category/tags), we can skip loading embeddings
-        for version in prompt.versions:
-            version.embedding = None
+        # Embeddings are not loaded since they're not in the SQLAlchemy model
+        # This is fine - embeddings are only needed for semantic search, not for display
         
         return prompt
     except HTTPException:
@@ -386,9 +382,10 @@ async def improve_and_save_prompt(
     The improved version will be tagged with the provider used.
     """
     try:
-        # Get the current prompt with versions, deferring embedding to avoid vector type issues
+        # Get the current prompt with versions
+        # Note: embedding column is not in SQLAlchemy model, so we don't need to defer it
         prompt = db.query(Prompt).options(
-            joinedload(Prompt.versions).defer(PromptVersion.embedding)
+            joinedload(Prompt.versions)
         ).filter(Prompt.id == prompt_id).first()
         
         if not prompt:
@@ -440,9 +437,10 @@ async def improve_and_save_prompt(
             )
             db.commit()
         
-        # Reload with versions, deferring embedding to avoid vector type issues
+        # Reload with versions
+        # Note: embedding column is not in SQLAlchemy model, so we don't need to defer it
         prompt = db.query(Prompt).options(
-            joinedload(Prompt.versions).defer(PromptVersion.embedding)
+            joinedload(Prompt.versions)
         ).filter(Prompt.id == prompt_id).first()
         
         if not prompt:
@@ -451,9 +449,8 @@ async def improve_and_save_prompt(
                 detail=f"Prompt with id {prompt_id} not found"
             )
         
-        # Set embeddings to None for display
-        for version in prompt.versions:
-            version.embedding = None
+        # Embeddings are not loaded since they're not in the SQLAlchemy model
+        # This is fine - embeddings are only needed for semantic search, not for display
         
         return prompt
     except HTTPException:

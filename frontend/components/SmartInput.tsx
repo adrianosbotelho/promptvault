@@ -4,22 +4,51 @@ import { useState, useEffect, useRef } from 'react';
 import { apiClient, ContextAnalyzeResponse } from '@/lib/api';
 import { Sparkles, Loader2 } from 'lucide-react';
 
+interface SmartInputRef {
+  getValue: () => string;
+  getContext: () => ContextAnalyzeResponse | null;
+  clear: () => void;
+}
+
 interface SmartInputProps {
   onContextDetected?: (context: ContextAnalyzeResponse) => void;
   placeholder?: string;
   className?: string;
+  inputRef?: React.RefObject<SmartInputRef | null>;
 }
 
 export default function SmartInput({
   onContextDetected,
   placeholder = '🔎 Digite ou cole código/descrição...',
   className = '',
+  inputRef,
 }: SmartInputProps) {
   const [value, setValue] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [context, setContext] = useState<ContextAnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const onContextDetectedRef = useRef(onContextDetected);
+
+  // Keep the ref updated with the latest callback
+  useEffect(() => {
+    onContextDetectedRef.current = onContextDetected;
+  }, [onContextDetected]);
+
+  // Expose value and context via ref
+  useEffect(() => {
+    if (inputRef) {
+      (inputRef as any).current = {
+        getValue: () => value,
+        getContext: () => context,
+        clear: () => {
+          setValue('');
+          setContext(null);
+          setError(null);
+        },
+      };
+    }
+  }, [value, context, inputRef]);
 
   useEffect(() => {
     // Clear previous timer
@@ -31,8 +60,8 @@ export default function SmartInput({
     if (!value.trim()) {
       setContext(null);
       setError(null);
-      if (onContextDetected) {
-        onContextDetected({
+      if (onContextDetectedRef.current) {
+        onContextDetectedRef.current({
           detected_mode: 'unknown',
           confidence: 0,
           domain: 'unknown',
@@ -55,8 +84,8 @@ export default function SmartInput({
         setContext(result);
         setError(null);
         
-        if (onContextDetected) {
-          onContextDetected(result);
+        if (onContextDetectedRef.current) {
+          onContextDetectedRef.current(result);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to analyze context';
@@ -74,7 +103,7 @@ export default function SmartInput({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [value, onContextDetected]);
+  }, [value]); // Removed onContextDetected from dependencies
 
   const getModeDisplay = () => {
     if (!context) return null;

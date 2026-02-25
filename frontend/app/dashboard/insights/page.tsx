@@ -103,85 +103,104 @@ export default function InsightsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredInsights.map((insight) => (
-              <div
-                key={insight.id}
-                className={`bg-[#1f1f23] rounded border p-4 ${
-                  insight.is_read 
-                    ? 'border-[#2c2c34]' 
-                    : 'border-[#3274d9]/50'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Lightbulb className={`w-4 h-4 ${
-                      insight.is_read ? 'text-[#8c8c8c]' : 'text-[#3274d9]'
-                    }`} />
-                    <span className="text-xs text-[#8c8c8c]">
-                      {new Date(insight.created_at).toLocaleDateString()}
-                    </span>
+            {filteredInsights.map((insight) => {
+              // Check if insight has any content
+              const hasImprovementIdeas = insight.improvement_ideas && Array.isArray(insight.improvement_ideas) && insight.improvement_ideas.length > 0;
+              const hasReusablePatterns = insight.reusable_patterns && Array.isArray(insight.reusable_patterns) && insight.reusable_patterns.length > 0;
+              const hasWarnings = insight.warnings && Array.isArray(insight.warnings) && insight.warnings.length > 0;
+              const hasContent = hasImprovementIdeas || hasReusablePatterns || hasWarnings;
+
+              // Only render if there's content
+              if (!hasContent) {
+                return null;
+              }
+
+              return (
+                <div
+                  key={insight.id}
+                  className={`bg-[#1f1f23] rounded border p-4 ${
+                    insight.is_read 
+                      ? 'border-[#2c2c34]' 
+                      : 'border-[#3274d9]/50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Lightbulb className={`w-4 h-4 ${
+                        insight.is_read ? 'text-[#8c8c8c]' : 'text-[#3274d9]'
+                      }`} />
+                      <span className="text-xs text-[#8c8c8c]">
+                        {new Date(insight.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {!insight.is_read && (
+                      <button
+                        onClick={() => markAsRead(insight.id)}
+                        className="text-xs text-[#d8d9da] hover:text-white flex items-center gap-1"
+                      >
+                        <Circle className="w-3 h-3" />
+                        Mark as read
+                      </button>
+                    )}
+                    {insight.is_read && (
+                      <div className="flex items-center gap-1 text-xs text-[#8c8c8c]">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Read
+                      </div>
+                    )}
                   </div>
-                  {!insight.is_read && (
-                    <button
-                      onClick={() => markAsRead(insight.id)}
-                      className="text-xs text-[#d8d9da] hover:text-white flex items-center gap-1"
-                    >
-                      <Circle className="w-3 h-3" />
-                      Mark as read
-                    </button>
+
+                  {hasImprovementIdeas && (
+                    <div className="mb-4">
+                      <h3 className="font-semibold text-white mb-2 text-sm">💡 Improvement Ideas</h3>
+                      <ul className="space-y-1.5">
+                        {insight.improvement_ideas
+                          .filter(idea => idea && String(idea).trim().length > 0)
+                          .map((idea, idx) => (
+                            <li key={idx} className="text-xs text-[#d8d9da]">
+                              {typeof idea === 'string' ? idea : String(idea)}
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
                   )}
-                  {insight.is_read && (
-                    <div className="flex items-center gap-1 text-xs text-[#8c8c8c]">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Read
+
+                  {hasReusablePatterns && (
+                    <div className="mb-4">
+                      <h3 className="font-semibold text-white mb-2 text-sm">🔄 Reusable Patterns</h3>
+                      <ul className="space-y-1.5">
+                        {insight.reusable_patterns
+                          .filter(pattern => pattern && String(pattern).trim().length > 0)
+                          .map((pattern, idx) => (
+                            <li key={idx} className="text-xs text-[#d8d9da]">
+                              {typeof pattern === 'string' ? pattern : String(pattern)}
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {hasWarnings && (
+                    <div>
+                      <h3 className="font-semibold text-white mb-2 text-sm">⚠️ Warnings</h3>
+                      <ul className="space-y-1.5">
+                        {insight.warnings
+                          .filter(warning => warning && String(warning).trim().length > 0)
+                          .map((warning, idx) => (
+                            <li key={idx} className="text-xs text-[#d8d9da]">
+                              {typeof warning === 'string' ? (
+                                <span className="text-yellow-400">{warning}</span>
+                              ) : (
+                                <span className="text-yellow-400">{String(warning)}</span>
+                              )}
+                            </li>
+                          ))}
+                      </ul>
                     </div>
                   )}
                 </div>
-
-                {insight.improvement_ideas && insight.improvement_ideas.length > 0 && (
-                  <div className="mb-4">
-                    <h3 className="font-semibold text-white mb-2 text-sm">💡 Improvement Ideas</h3>
-                    <ul className="space-y-1.5">
-                      {insight.improvement_ideas.map((idea, idx) => (
-                        <li key={idx} className="text-xs text-[#d8d9da]">
-                          {typeof idea === 'string' ? idea : String(idea)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {insight.reusable_patterns && insight.reusable_patterns.length > 0 && (
-                  <div className="mb-4">
-                    <h3 className="font-semibold text-white mb-2 text-sm">🔄 Reusable Patterns</h3>
-                    <ul className="space-y-1.5">
-                      {insight.reusable_patterns.map((pattern, idx) => (
-                        <li key={idx} className="text-xs text-[#d8d9da]">
-                          {typeof pattern === 'string' ? pattern : String(pattern)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {insight.warnings && insight.warnings.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold text-white mb-2 text-sm">⚠️ Warnings</h3>
-                    <ul className="space-y-1.5">
-                      {insight.warnings.map((warning, idx) => (
-                        <li key={idx} className="text-xs text-[#d8d9da]">
-                          {typeof warning === 'string' ? (
-                            <span className="text-yellow-400">{warning}</span>
-                          ) : (
-                            <span className="text-yellow-400">{String(warning)}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

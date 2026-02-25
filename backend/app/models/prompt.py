@@ -211,6 +211,7 @@ class PromptListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     latest_version: Optional[int] = None
+    provider: Optional[str] = None  # Provider used to improve the latest version (e.g., 'GroqProvider', 'OpenAIProvider', 'MockLLMProvider')
     
     class Config:
         from_attributes = True
