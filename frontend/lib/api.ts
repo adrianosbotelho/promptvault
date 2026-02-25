@@ -126,9 +126,9 @@ export interface InsightListItem {
   pattern_count: number;
   warning_count: number;
   is_read: boolean;
-  improvement_ideas?: Record<string, unknown>[];
-  reusable_patterns?: Record<string, unknown>[];
-  warnings?: Record<string, unknown>[];
+  improvement_ideas: Record<string, unknown>[];
+  reusable_patterns: Record<string, unknown>[];
+  warnings: Record<string, unknown>[];
 }
 
 export interface WorkerConfig {
@@ -259,6 +259,13 @@ export const apiClient = {
     return apiFetch('/api/v1/admin/worker/config', {
       method: 'PUT',
       body: JSON.stringify(config),
+    });
+  },
+
+  updatePromptCategory(id: number, data: { category?: string; tags?: string[] }): Promise<Prompt> {
+    return apiFetch(`/api/v1/prompts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     });
   },
 
