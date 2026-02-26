@@ -8,6 +8,7 @@ import {
   FileText, 
   Lightbulb, 
   Bot, 
+  Brain,
   Settings, 
   LogOut,
   Menu,
@@ -52,6 +53,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
   const isDashboardActive = mounted && pathname === '/dashboard';
   const isPromptViewActive = mounted && pathname?.startsWith('/dashboard/prompts');
   const isInsightsActive = mounted && pathname === '/dashboard/insights';
+  const isMentorActive = mounted && pathname === '/dashboard/mentor';
   const isAgentActive = mounted && pathname === '/dashboard/agent';
   const isSettingsActive = mounted && pathname === '/dashboard/admin/worker';
 
@@ -82,6 +84,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, active: isDashboardActive },
     { href: '/dashboard/prompts', label: 'Prompt View', icon: FileText, active: isPromptViewActive },
     { href: '/dashboard/insights', label: 'Insights', icon: Lightbulb, active: isInsightsActive },
+    { href: '/dashboard/mentor', label: '🧠 Architect Mentor', icon: Brain, active: isMentorActive },
     { href: '/dashboard/agent', label: 'Agent', icon: Bot, active: isAgentActive },
   ];
 
@@ -198,6 +201,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
               {pathname?.startsWith('/dashboard/prompts') && pathname !== '/dashboard/prompts' && 'Prompt Details'}
               {pathname === '/dashboard/prompts' && 'Prompt View'}
               {pathname === '/dashboard/insights' && 'Insights'}
+              {pathname === '/dashboard/mentor' && 'Architect Mentor'}
               {pathname === '/dashboard/agent' && 'Agent'}
               {pathname === '/dashboard/admin/worker' && 'Settings'}
             </div>

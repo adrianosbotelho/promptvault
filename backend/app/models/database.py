@@ -116,3 +116,22 @@ class WorkerConfig(Base):
     max_retries = Column(Integer, nullable=False, default=2, comment="Maximum retries per prompt")
     use_free_apis_only = Column(String, nullable=False, default="true", comment="Use only free APIs (true/false)")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ArchitectProfile(Base):
+    """Architect profile storing preferences and tendencies for mentor/agent context."""
+
+    __tablename__ = "architect_profiles"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(255), nullable=True, comment="Optional profile name (e.g. 'default')")
+
+    preferred_patterns = Column(JSON, nullable=True, comment="List of preferred architectural/design patterns")
+    recurring_decisions = Column(JSON, nullable=True, comment="Recurring architectural or technical decisions")
+    common_domains = Column(JSON, nullable=True, comment="Domains or problem areas the architect frequently works in")
+    risk_tendencies = Column(JSON, nullable=True, comment="Risk tendencies and technology adoption preferences")
+    optimization_focus = Column(JSON, nullable=True, comment="What the architect tends to optimize for")
+
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -213,61 +213,73 @@ class ContextDetector:
     def _calculate_delphi_score(self, text_lower: str, text: str) -> float:
         """Calculate Delphi detection score."""
         score = 0.0
-        
+
+        # Explicit domain mention: "delphi" in text (e.g. "tela Delphi", "código delphi") → high confidence
+        if re.search(r'\bdelphi\b', text_lower):
+            score += 0.65
+
         # Keyword matching
         keyword_matches = sum(1 for keyword in self.DELPHI_KEYWORDS if keyword in text_lower)
         keyword_score = min(keyword_matches / len(self.DELPHI_KEYWORDS) * 2, 0.5)
         score += keyword_score
-        
+
         # Pattern matching
         pattern_matches = sum(1 for pattern in self.DELPHI_CODE_PATTERNS if re.search(pattern, text, re.IGNORECASE))
         pattern_score = min(pattern_matches / len(self.DELPHI_CODE_PATTERNS) * 2, 0.4)
         score += pattern_score
-        
+
         # Strong indicators (higher weight)
         if any(keyword in text_lower for keyword in ['unit ', 'uses ', 'interface', 'implementation']):
             score += 0.1
-        
+
         return min(score, 1.0)
     
     def _calculate_oracle_score(self, text_lower: str, text_upper: str) -> float:
         """Calculate Oracle SQL detection score."""
         score = 0.0
-        
+
+        # Explicit domain mention: "oracle" in text (e.g. "banco Oracle", "query oracle")
+        if re.search(r'\boracle\b', text_lower):
+            score += 0.65
+
         # Keyword matching
         keyword_matches = sum(1 for keyword in self.ORACLE_KEYWORDS if keyword in text_lower)
         keyword_score = min(keyword_matches / len(self.ORACLE_KEYWORDS) * 2, 0.5)
         score += keyword_score
-        
+
         # SQL pattern matching (case-sensitive for SQL keywords)
         pattern_matches = sum(1 for pattern in self.ORACLE_SQL_PATTERNS if re.search(pattern, text_upper))
         pattern_score = min(pattern_matches / len(self.ORACLE_SQL_PATTERNS) * 2, 0.4)
         score += pattern_score
-        
+
         # Strong indicators
         if any(keyword in text_lower for keyword in ['pl/sql', 'plsql', 'varchar2', 'explain plan']):
             score += 0.1
-        
+
         return min(score, 1.0)
     
     def _calculate_architecture_score(self, text_lower: str, text: str) -> float:
         """Calculate Architecture detection score."""
         score = 0.0
-        
+
+        # Explicit domain mention: "arquitetura" or "architecture" in text
+        if re.search(r'\b(arquitetura|architecture)\b', text_lower):
+            score += 0.65
+
         # Keyword matching
         keyword_matches = sum(1 for keyword in self.ARCHITECTURE_KEYWORDS if keyword in text_lower)
         keyword_score = min(keyword_matches / len(self.ARCHITECTURE_KEYWORDS) * 2, 0.5)
         score += keyword_score
-        
+
         # Pattern matching
         pattern_matches = sum(1 for pattern in self.ARCHITECTURE_PATTERNS if re.search(pattern, text_lower))
         pattern_score = min(pattern_matches / len(self.ARCHITECTURE_PATTERNS) * 2, 0.4)
         score += pattern_score
-        
+
         # Strong indicators
         if any(keyword in text_lower for keyword in ['design pattern', 'padrão de projeto', 'microservice', 'arquitetura']):
             score += 0.1
-        
+
         return min(score, 1.0)
     
     def _detect_subdomain(self, domain: Domain, text_lower: str, text: str) -> Subdomain:

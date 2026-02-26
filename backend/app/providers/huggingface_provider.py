@@ -12,6 +12,10 @@ from pydantic import BaseModel
 
 from app.core.llm_provider import LLMProvider, PromptImprovementResult
 from app.core.config import settings
+from app.core.prompt_improvement_instructions import (
+    PROMPT_IMPROVEMENT_SYSTEM,
+    build_improvement_user_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +24,6 @@ HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models"
 
 # Default model (free, good for prompt analysis)
 DEFAULT_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"  # Free model with good performance
-
-# System instruction for prompt improvement
-SYSTEM_INSTRUCTION = (
-    "You are a prompt engineering expert. "
-    "Improve the prompt structure without changing intent."
-)
 
 
 class HuggingFaceProvider(LLMProvider):
@@ -69,20 +67,10 @@ class HuggingFaceProvider(LLMProvider):
             Dictionary with 'improved_prompt' and 'explanation' keys
         """
         try:
-            # Build the prompt for the model
-            full_prompt = f"""{SYSTEM_INSTRUCTION}
+            # Build the prompt for the model (HF API often uses a single input)
+            full_prompt = f"""{PROMPT_IMPROVEMENT_SYSTEM}
 
-Please improve the following prompt and provide both the improved version and an explanation of the improvements made.
-
-Original prompt:
-{prompt}
-
-Please respond in the following exact format:
-IMPROVED_PROMPT:
-[your improved prompt here]
-
-EXPLANATION:
-[your explanation here]"""
+{build_improvement_user_message(prompt)}"""
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(

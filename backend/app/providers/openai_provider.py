@@ -10,14 +10,12 @@ from openai import APIError
 
 from app.core.llm_provider import LLMProvider, PromptImprovementResult
 from app.core.config import settings
+from app.core.prompt_improvement_instructions import (
+    PROMPT_IMPROVEMENT_SYSTEM,
+    build_improvement_user_message,
+)
 
 logger = logging.getLogger(__name__)
-
-# System instruction for prompt improvement
-SYSTEM_INSTRUCTION = (
-    "You are a prompt engineering expert. "
-    "Improve the prompt structure without changing intent."
-)
 
 
 class OpenAIProvider(LLMProvider):
@@ -61,24 +59,11 @@ class OpenAIProvider(LLMProvider):
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_INSTRUCTION
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Please improve the following prompt and provide both the improved version "
-                            f"and an explanation of the improvements made.\n\n"
-                            f"Original prompt:\n{prompt}\n\n"
-                            f"Please respond in the following exact format:\n"
-                            f"IMPROVED_PROMPT:\n[your improved prompt here]\n\n"
-                            f"EXPLANATION:\n[your explanation here]"
-                        )
-                    }
+                    {"role": "system", "content": PROMPT_IMPROVEMENT_SYSTEM},
+                    {"role": "user", "content": build_improvement_user_message(prompt)},
                 ],
-                temperature=0.7,
-                max_tokens=1500
+                temperature=0.5,
+                max_tokens=2000
             )
             
             # Extract the response content
