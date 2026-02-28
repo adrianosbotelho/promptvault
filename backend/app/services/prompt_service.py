@@ -274,6 +274,29 @@ class PromptService:
         return result
     
     @staticmethod
+    def calculate_quality_score(prompt: Prompt, latest_version: Optional[int], has_insights: bool) -> int:
+        """
+        Calculate a quality score (0-100) for a prompt based on completeness signals.
+        +20 has description
+        +20 has category
+        +20 has tags
+        +20 has been analyzed (has insights)
+        +20 has been improved (version > 1)
+        """
+        score = 0
+        if prompt.description:
+            score += 20
+        if prompt.category:
+            score += 20
+        if prompt.tags and len(prompt.tags) > 0:
+            score += 20
+        if has_insights:
+            score += 20
+        if latest_version and latest_version > 1:
+            score += 20
+        return score
+
+    @staticmethod
     def _prompt_to_list_item(db: Session, prompt: Prompt) -> PromptListItem:
         """Convert a Prompt model to PromptListItem."""
         # Get latest version number
@@ -290,7 +313,12 @@ class PromptService:
             ).order_by(PromptVersion.created_at.desc()).first()
             if latest_version_obj:
                 improved_by = latest_version_obj.improved_by
-        
+
+        # Check if prompt has insights
+        has_insights = db.query(Insight.id).filter(Insight.prompt_id == prompt.id).first() is not None
+
+        quality_score = PromptService.calculate_quality_score(prompt, latest_version, has_insights)
+
         return PromptListItem(
             id=prompt.id,
             name=prompt.name,
@@ -300,8 +328,24 @@ class PromptService:
             created_at=prompt.created_at,
             updated_at=prompt.updated_at,
             latest_version=latest_version,
-            provider=improved_by  # Add provider field
+            provider=improved_by,
+            is_favorite=bool(getattr(prompt, 'is_favorite', False)),
+            quality_score=quality_score,
         )
+
+    @staticmethod
+    def toggle_favorite(db: Session, prompt_id: int) -> Prompt:
+        """Toggle the is_favorite flag for a prompt."""
+        prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt with id {prompt_id} not found"
+            )
+        prompt.is_favorite = not bool(getattr(prompt, 'is_favorite', False))
+        db.commit()
+        db.refresh(prompt)
+        return prompt
     
     @staticmethod
     def get_grouped_prompts(db: Session) -> GroupedPromptsResponse:
@@ -413,12 +457,12 @@ class PromptService:
         if not query or not query.strip():
             raise ValueError("Query cannot be empty")
         
-        # Generate embedding for the query
+        # Generate embedding for the query (may be None if no embedding service or in async context)
         query_embedding = PromptService._generate_embedding_sync(query.strip())
         
         if not query_embedding:
-            logger.warning("Could not generate embedding for query. Returning empty results.")
-            return []
+            logger.warning("Could not generate embedding for query. Using text-based search.")
+            return PromptService._fallback_text_search(db, query.strip(), top_k)
         
         try:
             # Use raw SQL for pgvector cosine similarity search
@@ -483,6 +527,11 @@ class PromptService:
                 similarity = float(row.similarity)
                 results.append((prompt, version, similarity))
             
+            # If no results from vector search (e.g. no prompts have embeddings), use text search
+            if not results:
+                logger.info("Semantic search returned no results. Using text-based search.")
+                return PromptService._fallback_text_search(db, query.strip(), top_k)
+            
             return results
             
         except Exception as e:
@@ -493,39 +542,43 @@ class PromptService:
     
     @staticmethod
     def _fallback_text_search(db: Session, query: str, top_k: int) -> List[Tuple[Prompt, PromptVersion, float]]:
-        """Fallback text search when vector search is not available."""
-        # Simple text-based search as fallback
-        query_lower = query.lower()
+        """Text-based search by keyword in name, description, category, tags and content."""
+        query_lower = query.lower().strip()
+        if not query_lower:
+            return []
         prompts = db.query(Prompt).all()
-        
         results = []
         for prompt in prompts:
-            # Get latest version
             latest_version = db.query(func.max(PromptVersion.version)).filter(
                 PromptVersion.prompt_id == prompt.id
             ).scalar()
-            
-            if latest_version:
-                version = db.query(PromptVersion).filter(
-                    PromptVersion.prompt_id == prompt.id,
-                    PromptVersion.version == latest_version
-                ).first()
-                
-                if version and version.content:
-                    # Simple text matching score
-                    content_lower = version.content.lower()
-                    score = 0.0
-                    if query_lower in content_lower:
-                        score = 0.5
-                    if prompt.name and query_lower in prompt.name.lower():
+            if not latest_version:
+                continue
+            version = db.query(PromptVersion).filter(
+                PromptVersion.prompt_id == prompt.id,
+                PromptVersion.version == latest_version
+            ).first()
+            if not version:
+                continue
+            score = 0.0
+            # Category match (e.g. "delphi" matches category Delphi)
+            if prompt.category is not None:
+                cat_str = (getattr(prompt.category, "value", None) or str(prompt.category)).lower()
+                if query_lower in cat_str:
+                    score += 0.6
+            if prompt.name and query_lower in prompt.name.lower():
+                score += 0.5
+            if prompt.description and query_lower in prompt.description.lower():
+                score += 0.35
+            if version.content and query_lower in version.content.lower():
+                score += 0.4
+            if prompt.tags:
+                for tag in prompt.tags:
+                    if tag and query_lower in tag.lower():
                         score += 0.3
-                    if prompt.description and query_lower in prompt.description.lower():
-                        score += 0.2
-                    
-                    if score > 0:
-                        results.append((prompt, version, score))
-        
-        # Sort by score and return top_k
+                        break
+            if score > 0:
+                results.append((prompt, version, min(score, 1.0)))
         results.sort(key=lambda x: x[2], reverse=True)
         return results[:top_k]
     

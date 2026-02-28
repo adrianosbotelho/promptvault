@@ -133,3 +133,11 @@ class MockLLMProvider(LLMProvider):
         )
         
         return explanation
+
+    async def chat(self, system: str, user: str, max_tokens: int = 4000) -> str:
+        """Mock chat: returns minimal JSON so callers can detect and fallback."""
+        return (
+            '{"context":"(Mock: configure a real LLM provider for expert prompts.)",'
+            '"problem_description":"(Mock)","analysis_strategy":"(Mock)","technical_steps":"(Mock)",'
+            '"edge_cases":"(Mock)","validation_checklist":"(Mock)","expected_result":"(Mock)"}'
+        )

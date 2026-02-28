@@ -2,7 +2,7 @@ import { getToken } from './auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-export type PromptCategory = 'delphi' | 'oracle' | 'arquitetura';
+export type PromptCategory = 'delphi' | 'oracle' | 'arquitetura' | 'python' | 'sql' | 'api';
 export type PromptTag = 'implementation' | 'debug' | 'architecture' | 'performance' | 'analysis' | 'improvement';
 
 export interface PromptVersion {
@@ -24,6 +24,8 @@ export interface PromptListItem {
   updated_at: string;
   latest_version?: number | null;
   provider?: string | null;
+  is_favorite?: boolean;
+  quality_score?: number;
 }
 
 export interface Prompt {
@@ -126,9 +128,16 @@ export interface InsightListItem {
   pattern_count: number;
   warning_count: number;
   is_read: boolean;
-  improvement_ideas: Record<string, unknown>[];
-  reusable_patterns: Record<string, unknown>[];
-  warnings: Record<string, unknown>[];
+}
+
+export interface InsightDetail {
+  id: number;
+  prompt_id: number;
+  created_at: string;
+  read_at?: string | null;
+  improvement_ideas: Record<string, unknown>[] | null;
+  reusable_patterns: Record<string, unknown>[] | null;
+  warnings: Record<string, unknown>[] | null;
 }
 
 export interface WorkerConfig {
@@ -147,6 +156,63 @@ export interface ContextAnalyzeResponse {
   subdomain: string;
   suggested_prompts: SemanticSearchResult[];
   total_suggestions: number;
+}
+
+export interface MentorSummaryItem {
+  text: string;
+  prompt_id?: number;
+  prompt_name?: string;
+  created_at?: string;
+}
+
+export interface MentorSummaryResponse {
+  recent_observations: MentorSummaryItem[];
+  architectural_alerts: MentorSummaryItem[];
+  detected_patterns: MentorSummaryItem[];
+}
+
+export interface MentorReviewResponse {
+  mentor_advice: string;
+  architect_observation: string;
+  risk_alert: string;
+}
+
+export interface ArchitectProfile {
+  id: number;
+  name?: string | null;
+  preferred_patterns?: string[] | null;
+  recurring_decisions?: string[] | null;
+  common_domains?: string[] | null;
+  risk_tendencies?: string[] | null;
+  optimization_focus?: string[] | null;
+  notes?: string | null;
+}
+
+export interface PromptTemplate {
+  id: number;
+  name: string;
+  description?: string | null;
+  content: string;
+  variables?: string[] | null;
+  specialization?: string | null;
+  category?: string | null;
+  created_at: string;
+}
+
+export interface ArchitectProfileUpdate {
+  name?: string;
+  preferred_patterns?: string[];
+  recurring_decisions?: string[];
+  common_domains?: string[];
+  risk_tendencies?: string[];
+  optimization_focus?: string[];
+  notes?: string;
+}
+
+export interface SpecialistBuildResponse {
+  markdown_prompt: string;
+  reasoning: string;
+  applied_specialist: string;
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -247,6 +313,10 @@ export const apiClient = {
     return apiFetch(`/api/v1/insights${qs ? `?${qs}` : ''}`);
   },
 
+  getInsight(insightId: number): Promise<InsightDetail> {
+    return apiFetch(`/api/v1/insights/${insightId}`);
+  },
+
   markInsightAsRead(insightId: number): Promise<Record<string, unknown>> {
     return apiFetch(`/api/v1/insights/${insightId}/read`, { method: 'POST' });
   },
@@ -274,5 +344,63 @@ export const apiClient = {
       method: 'POST',
       body: JSON.stringify({ text }),
     });
+  },
+
+  getMentorSummary(domain?: string): Promise<MentorSummaryResponse> {
+    const qs = domain ? `?domain=${encodeURIComponent(domain)}` : '';
+    return apiFetch(`/api/v1/mentor/summary${qs}`);
+  },
+
+  buildExpertPrompt(idea: string, specialization: string): Promise<SpecialistBuildResponse> {
+    return apiFetch('/api/v1/specialist/build', {
+      method: 'POST',
+      body: JSON.stringify({ idea, specialization }),
+    });
+  },
+
+  mentorReview(text: string): Promise<MentorReviewResponse> {
+    return apiFetch('/api/v1/mentor/review', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  specialistFeedback(specialization: string, useful: boolean): Promise<{ recorded: boolean; message: string }> {
+    return apiFetch('/api/v1/specialist/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ specialization, useful }),
+    });
+  },
+
+  toggleFavorite(id: number): Promise<PromptListItem> {
+    return apiFetch(`/api/v1/prompts/${id}/favorite`, { method: 'PUT' });
+  },
+
+  getProfile(): Promise<ArchitectProfile> {
+    return apiFetch('/api/v1/profile');
+  },
+
+  updateProfile(data: ArchitectProfileUpdate): Promise<ArchitectProfile> {
+    return apiFetch('/api/v1/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Templates
+  getTemplates(): Promise<PromptTemplate[]> {
+    return apiFetch('/api/v1/templates');
+  },
+
+  createTemplate(data: { name: string; description?: string; content: string; specialization?: string; category?: string }): Promise<PromptTemplate> {
+    return apiFetch('/api/v1/templates', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  deleteTemplate(id: number): Promise<void> {
+    return apiFetch(`/api/v1/templates/${id}`, { method: 'DELETE' });
+  },
+
+  useTemplate(id: number, variables: Record<string, string>): Promise<{ content: string; missing_variables: string[] }> {
+    return apiFetch(`/api/v1/templates/${id}/use`, { method: 'POST', body: JSON.stringify({ variables }) });
   },
 };

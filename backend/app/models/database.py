@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, REAL, JSON, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, REAL, JSON, Enum as SQLEnum, Boolean
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from datetime import datetime
@@ -37,6 +37,7 @@ class Prompt(Base):
         nullable=True,
         comment="Array of tags for the prompt"
     )
+    is_favorite = Column(Boolean, default=False, nullable=False, server_default='false', comment="Whether the prompt is marked as favorite")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -135,3 +136,31 @@ class ArchitectProfile(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class Specialization(Base):
+    """Specialization table: prompt expert profiles (name, domain, description, system_prompt, template_markdown)."""
+
+    __tablename__ = "specializations"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(255), nullable=False, index=True)
+    domain = Column(String(512), nullable=True)
+    description = Column(Text, nullable=True)
+    system_prompt = Column(Text, nullable=True)
+    template_markdown = Column(Text, nullable=True)
+
+
+class PromptTemplate(Base):
+    """Reusable prompt template with optional variable placeholders."""
+
+    __tablename__ = "prompt_templates"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(255), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    content = Column(Text, nullable=False, comment="Template content with {{variable}} placeholders")
+    variables = Column(JSON, nullable=True, comment="List of variable names extracted from content")
+    specialization = Column(String(100), nullable=True, comment="Specialist ID used to generate this template")
+    category = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -146,8 +146,14 @@ async def search_prompts(
                     updated_at=prompt.updated_at,
                     latest_version=version.version
                 ),
-                similarity=similarity,
-                matched_content=version.content[:200] + "..." if len(version.content) > 200 else version.content
+                version=PromptVersionResponse(
+                    id=version.id,
+                    version=version.version,
+                    content=version.content,
+                    improved_by=version.improved_by,
+                    created_at=version.created_at
+                ),
+                similarity=similarity
             ))
         
         return search_results
@@ -318,6 +324,23 @@ async def get_prompt_versions(
             ))
         
         return sorted(versions, key=lambda v: v.version, reverse=True)
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        raise handle_db_error(e)
+
+
+@router.put("/{prompt_id}/favorite", response_model=PromptListItem)
+async def toggle_favorite(
+    prompt_id: int,
+    db: Session = Depends(get_db)
+):
+    """Toggle the is_favorite flag for a prompt."""
+    try:
+        prompt = PromptService.toggle_favorite(db, prompt_id)
+        return PromptService._prompt_to_list_item(db, prompt)
     except HTTPException:
         raise
     except (OperationalError, SQLAlchemyError) as e:

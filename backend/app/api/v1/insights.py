@@ -77,6 +77,30 @@ async def list_insights(
         )
 
 
+@router.get("/{insight_id}", response_model=InsightResponse, status_code=status.HTTP_200_OK)
+async def get_insight(
+    insight_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a single insight by ID (includes full content: improvement_ideas, reusable_patterns, warnings).
+    """
+    try:
+        return InsightService.get_insight(db, insight_id)
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f"Error fetching insight: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching insight: {str(e)}"
+        )
+
+
 @router.post("/{insight_id}/read", response_model=InsightResponse, status_code=status.HTTP_200_OK)
 async def mark_insight_as_read(
     insight_id: int,

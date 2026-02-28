@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient, CreatePromptRequest } from '@/lib/api';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
 
 interface NewPromptFormProps {
   onSuccess?: () => void;
@@ -11,18 +15,13 @@ interface NewPromptFormProps {
 }
 
 const CATEGORIES: { value: string | null; label: string }[] = [
-  { value: null, label: 'Sem Categoria' },
+  { value: null, label: 'No Category' },
   { value: 'delphi', label: 'Delphi Development' },
   { value: 'oracle', label: 'Oracle Development' },
   { value: 'arquitetura', label: 'Architecture' },
 ];
 
-export default function NewPromptForm({ 
-  onSuccess, 
-  onCancel, 
-  initialContent,
-  initialCategory 
-}: NewPromptFormProps) {
+export default function NewPromptForm({ onSuccess, onCancel, initialContent, initialCategory }: NewPromptFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [content, setContent] = useState(initialContent || '');
@@ -30,135 +29,69 @@ export default function NewPromptForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Update content when initialContent changes
-  useEffect(() => {
-    if (initialContent) {
-      setContent(initialContent);
-    }
-  }, [initialContent]);
-
-  // Update category when initialCategory changes
-  useEffect(() => {
-    if (initialCategory) {
-      setCategory(initialCategory);
-    }
-  }, [initialCategory]);
+  useEffect(() => { if (initialContent) setContent(initialContent); }, [initialContent]);
+  useEffect(() => { if (initialCategory) setCategory(initialCategory); }, [initialCategory]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!title.trim() || !content.trim()) {
-      setError('Title and content are required');
-      return;
-    }
-
+    if (!title.trim() || !content.trim()) { setError('Title and content are required'); return; }
     try {
-      setLoading(true);
-      setError(null);
-
+      setLoading(true); setError(null);
       const promptData: CreatePromptRequest = {
-        name: title.trim(), // Use name as required field
-        title: title.trim(), // Also include title as alias
+        name: title.trim(),
+        title: title.trim(),
         description: description.trim() || undefined,
         content: content.trim(),
         category: category || undefined,
       };
-
       await apiClient.createPrompt(promptData);
-      
-      // Reset form
-      setTitle('');
-      setDescription('');
-      setContent('');
-      
-      // Call success callback
-      if (onSuccess) {
-        onSuccess();
-      }
+      setTitle(''); setDescription(''); setContent('');
+      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create prompt');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h2 className="text-sm font-semibold text-white mb-4">Create New Prompt</h2>
+      <h2 className="text-sm font-semibold text-foreground">Create New Prompt</h2>
 
       {error && (
-        <div className="p-3 bg-red-500/10 border border-red-500/50 text-red-400 rounded text-xs">
-          {error}
-        </div>
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
       )}
 
-      <div className="space-y-4">
-        {/* Title */}
-        <div>
-          <label htmlFor="title" className="block text-xs font-medium text-[#8c8c8c] mb-1">
-            Title *
-          </label>
-          <input
-            type="text"
-            id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
-            placeholder="Enter prompt title"
-          />
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <label htmlFor="title" className="text-xs font-medium text-muted-foreground">Title *</label>
+          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Enter prompt title" />
         </div>
-
-        {/* Description */}
-        <div>
-          <label htmlFor="description" className="block text-xs font-medium text-[#8c8c8c] mb-1">
-            Description
-          </label>
-          <input
-            type="text"
-            id="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
-            placeholder="Optional description"
-          />
+        <div className="space-y-1.5">
+          <label htmlFor="description" className="text-xs font-medium text-muted-foreground">Description</label>
+          <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" />
         </div>
-
-        {/* Content */}
-        <div>
-          <label htmlFor="content" className="block text-xs font-medium text-[#8c8c8c] mb-1">
-            Content *
-          </label>
-          <textarea
-            id="content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            required
-            rows={8}
-            className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9] resize-y font-mono"
-            placeholder="Enter your prompt content here..."
-          />
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 px-3 py-2 bg-[#3274d9] text-white rounded text-sm font-medium hover:bg-[#1f60c4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        <div className="space-y-1.5">
+          <label htmlFor="category" className="text-xs font-medium text-muted-foreground">Category</label>
+          <select
+            id="category"
+            value={category || ''}
+            onChange={(e) => setCategory(e.target.value || null)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
+            {CATEGORIES.map((c) => (
+              <option key={c.value ?? 'null'} value={c.value ?? ''} className="bg-card text-foreground">{c.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="content" className="text-xs font-medium text-muted-foreground">Content *</label>
+          <Textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} required rows={8} placeholder="Enter your prompt content..." className="font-mono" />
+        </div>
+        <div className="flex gap-2 pt-1">
+          <Button type="submit" disabled={loading} className="flex-1">
+            {loading && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
             {loading ? 'Creating...' : 'Create Prompt'}
-          </button>
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={loading}
-              className="px-3 py-2 bg-[#2c2c34] text-[#d8d9da] rounded text-sm font-medium hover:bg-[#3a3a44] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-          )}
+          </Button>
+          {onCancel && <Button type="button" variant="secondary" onClick={onCancel} disabled={loading}>Cancel</Button>}
         </div>
       </div>
     </form>

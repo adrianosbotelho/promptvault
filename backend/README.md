@@ -1,76 +1,112 @@
-# PromptVault Backend
+# PromptVault — Backend
 
-FastAPI backend application following clean architecture.
+FastAPI backend seguindo arquitetura limpa.
 
 ## Setup
 
-1. Install dependencies:
+### 1. Instalar dependências
+
 ```bash
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-2. Configure database:
-   - **Option 1 (Recommended)**: Run the setup script:
-     ```bash
-     python setup_env.py
-     ```
-     This will guide you through creating the `.env` file with the correct database configuration.
-   
-   - **Option 2**: Manually create a `.env` file in the `backend` directory:
-     ```
-     DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault
-     INIT_DB_ON_STARTUP=false
-     SECRET_KEY=your-secret-key-here
-     ```
-   - **Important**: 
-     - Update `DATABASE_URL` with your actual PostgreSQL credentials
-     - Make sure the database name matches your Docker container (default: `promptvault`)
-     - By default, `INIT_DB_ON_STARTUP=false` to prevent startup errors if database is not configured
+### 2. Configurar ambiente
 
-3. Initialize database tables:
-   - **Option 1**: Set `INIT_DB_ON_STARTUP=true` in `.env` to auto-create tables on startup
-   - **Option 2**: Run manually: `python init_db.py` (recommended for first setup)
+Crie o arquivo `.env` nesta pasta:
 
-4. Create initial user:
-   ```bash
-   cd backend
-   python create_user.py
-   ```
-   This will prompt you for email and password to create the first user.
-   **Note**: This is a single-user system, so you only need to create one user.
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/promptvault
+INIT_DB_ON_STARTUP=false
+SECRET_KEY=sua-chave-secreta
+GROQ_API_KEY=sua-chave-groq          # opcional, preferido
+OPENAI_API_KEY=sua-chave-openai      # opcional, fallback
+```
 
-5. Run the application:
+Ou use o script interativo:
 
-**Option 1: Using the run script (recommended)**
 ```bash
-cd backend
+python setup_env.py
+```
+
+### 3. Inicializar banco de dados
+
+```bash
+python init_db.py
+```
+
+Requer PostgreSQL 15+ com a extensão `pgvector` instalada.
+
+### 4. Criar usuário inicial
+
+```bash
+python create_user.py
+```
+
+Sistema single-user — crie apenas um usuário.
+
+### 5. Iniciar servidor
+
+```bash
 python run.py
+# ou: uvicorn app.main:app --reload
 ```
 
-**Option 2: Using uvicorn directly**
-```bash
-cd backend
-uvicorn app.main:app --reload
+API disponível em `http://127.0.0.1:8000`
+Documentação Swagger em `http://127.0.0.1:8000/docs`
+
+## Estrutura
+
+```
+app/
+├── api/v1/           # Endpoints REST
+│   ├── auth.py       # Login JWT
+│   ├── prompts.py    # CRUD + improve + favorite
+│   ├── specialist.py # Prompt Studio
+│   ├── insights.py   # Insights do Agent
+│   ├── mentor.py     # Architect Mentor
+│   ├── profile.py    # Perfil do Arquiteto
+│   ├── templates.py  # Templates reutilizáveis
+│   └── agent.py      # Execução do AI Agent
+├── specialist/       # Especialistas do Prompt Studio
+│   ├── base.py
+│   ├── prompt_refiner.py
+│   ├── learning_engine.py
+│   ├── specialization_registry.py
+│   ├── delphi_*.py / plsql_*.py
+│   ├── python_debug.py / python_refactor.py
+│   ├── sql_query.py / api_design.py
+├── mentor/           # Architect Mentor service
+├── agent/            # AI Agent (análise automática)
+├── background/       # Worker em background
+├── models/           # SQLAlchemy + Pydantic schemas
+├── services/         # Lógica de negócio
+├── providers/        # Groq, OpenAI, Mock
+└── core/             # Config, auth, database, categories
 ```
 
-The API will be available at `http://127.0.0.1:8000`
+## Provedores LLM
 
-## Endpoints
+O sistema detecta automaticamente qual provedor usar:
 
-- `GET /` - Root endpoint
-- `GET /api/v1/health` - Health check
-- `POST /api/v1/auth/login` - User login (returns JWT token)
-- `GET /api/v1/openapi.json` - OpenAPI schema
-- `GET /docs` - Swagger UI documentation
+1. **Groq** — se `GROQ_API_KEY` estiver configurada (recomendado, mais rápido)
+2. **OpenAI** — se `OPENAI_API_KEY` estiver configurada
+3. **Mock** — fallback sem chave configurada (retorna respostas simuladas)
 
-## Database
+## Banco de Dados
 
-The application uses SQLAlchemy with PostgreSQL. The connection is configured with:
-- Connection pooling (pool_size=5, max_overflow=10)
-- Connection verification (pool_pre_ping=True)
-- Optional automatic table creation on startup (controlled by `INIT_DB_ON_STARTUP`)
+PostgreSQL com SQLAlchemy. Principais tabelas:
 
-**Note**: If you see database connection errors on startup, make sure:
-1. PostgreSQL is running
-2. Database exists and credentials in `.env` are correct
-3. Set `INIT_DB_ON_STARTUP=false` to skip auto-initialization and run `python init_db.py` manually
+| Tabela | Descrição |
+|--------|-----------|
+| `users` | Usuário único do sistema |
+| `prompts` | Prompts com `is_favorite`, `quality_score` |
+| `prompt_versions` | Histórico de versões |
+| `insights` | Análises do AI Agent |
+| `architect_profiles` | Perfil do Arquiteto |
+| `prompt_templates` | Templates reutilizáveis com variáveis |
+
+Configuração de pool:
+- `pool_size=5`, `max_overflow=10`
+- `pool_pre_ping=True` (verificação de conexão)

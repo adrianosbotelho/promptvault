@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
 import { apiClient, WorkerConfig } from '@/lib/api';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
 
 export default function WorkerAdminPage() {
   const [config, setConfig] = useState<WorkerConfig | null>(null);
@@ -11,227 +15,98 @@ export default function WorkerAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadConfig();
-  }, []);
+  useEffect(() => { loadConfig(); }, []);
 
   const loadConfig = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await apiClient.getWorkerConfig();
-      setConfig(data);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load worker configuration';
-      setError(errorMessage);
-      
-      // If unauthorized, the apiClient will handle redirect
-      if (errorMessage.includes('Unauthorized')) {
-        return; // Don't show error, redirect is happening
-      }
-    } finally {
-      setLoading(false);
-    }
+    try { setLoading(true); setError(null); setConfig(await apiClient.getWorkerConfig()); }
+    catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load configuration';
+      if (!msg.includes('Unauthorized')) setError(msg);
+    } finally { setLoading(false); }
   };
 
   const handleSave = async () => {
     if (!config) return;
-
     try {
-      setSaving(true);
-      setError(null);
-      setSuccessMessage(null);
-
-      const updated = await apiClient.updateWorkerConfig(config);
-      setConfig(updated);
-      setSuccessMessage('Worker configuration updated successfully! Note: Changes may require server restart to take full effect.');
-
-      // Auto-hide success message after 5 seconds
+      setSaving(true); setError(null); setSuccessMessage(null);
+      setConfig(await apiClient.updateWorkerConfig(config));
+      setSuccessMessage('Configuration updated. Some changes may require a server restart.');
       setTimeout(() => setSuccessMessage(null), 5000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update worker configuration');
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to save'); }
+    finally { setSaving(false); }
   };
 
   const handleChange = (field: keyof WorkerConfig, value: any) => {
-    if (!config) return;
-    setConfig({ ...config, [field]: value });
+    if (config) setConfig({ ...config, [field]: value });
   };
 
-  if (loading) {
-    return (
-      <AppShell>
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-[#1f1f23] rounded border border-[#2c2c34] p-4">
-            <p className="text-[#8c8c8c] text-sm">Loading worker configuration...</p>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
+  if (loading) return (
+    <AppShell><div className="max-w-4xl mx-auto"><Card><CardContent className="p-4 text-muted-foreground text-sm">Loading configuration...</CardContent></Card></div></AppShell>
+  );
+  if (!config) return (
+    <AppShell><div className="max-w-4xl mx-auto"><div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">Failed to load configuration</div></div></AppShell>
+  );
 
-  if (!config) {
-    return (
-      <AppShell>
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-[#1f1f23] rounded border border-red-500/50 p-4">
-            <p className="text-red-400 text-sm">Failed to load worker configuration</p>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
+  const Toggle = ({ label, desc, checked, onChange }: { label: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) => (
+    <div className="flex items-center justify-between p-4 bg-muted rounded-md">
+      <div>
+        <p className="text-sm font-medium text-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+      </div>
+      <label className="relative inline-flex items-center cursor-pointer">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
+        <div className="w-10 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-foreground after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary" />
+      </label>
+    </div>
+  );
+
+  const NumberField = ({ label, desc, value, min, max, onChange }: { label: string; desc: string; value: number; min: number; max: number; onChange: (v: number) => void }) => (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <Input type="number" min={min} max={max} value={value} onChange={(e) => onChange(parseInt(e.target.value) || min)} />
+      <p className="text-xs text-muted-foreground">{desc}</p>
+    </div>
+  );
 
   return (
     <AppShell>
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
+      <div className="max-w-4xl mx-auto space-y-5">
         <div>
-          <h1 className="text-xl font-semibold text-white mb-1">Worker Configuration</h1>
-          <p className="text-xs text-[#8c8c8c]">Configure the automatic background worker that analyzes prompts</p>
+          <h1 className="text-xl font-semibold text-foreground mb-1">Worker Configuration</h1>
+          <p className="text-xs text-muted-foreground">Configure the background worker that analyzes prompts</p>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-[#1f1f23] rounded border border-red-500/50 p-4">
-            <p className="text-red-400 text-sm">{error}</p>
-          </div>
-        )}
+        {error && <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
+        {successMessage && <div className="rounded-md border border-green-500/50 bg-green-500/10 px-4 py-3 text-sm text-green-400">{successMessage}</div>}
 
-        {/* Success Message */}
-        {successMessage && (
-          <div className="bg-[#1f1f23] rounded border border-green-500/50 p-4">
-            <p className="text-green-400 text-sm">{successMessage}</p>
-          </div>
-        )}
-
-        {/* Configuration Form */}
-        <div className="bg-[#1f1f23] rounded border border-[#2c2c34] p-4 space-y-4">
-          {/* Enable/Disable Worker */}
-          <div className="flex items-center justify-between p-4 bg-[#0b0b0f] rounded border border-[#2c2c34]">
-            <div>
-              <label className="text-sm font-medium text-white">Enable Automatic Worker</label>
-              <p className="text-xs text-[#8c8c8c] mt-1">
-                When enabled, the worker will automatically analyze prompts at the configured interval
-              </p>
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            <Toggle label="Enable Automatic Worker" desc="Automatically analyze prompts at the configured interval" checked={config.enabled} onChange={(v) => handleChange('enabled', v)} />
+            <NumberField label="Analysis Interval (minutes)" desc="1-1440 minutes, default: 5" value={config.interval_minutes} min={1} max={1440} onChange={(v) => handleChange('interval_minutes', v)} />
+            <NumberField label="Maximum Prompts per Cycle" desc="1-100, default: 5" value={config.max_prompts} min={1} max={100} onChange={(v) => handleChange('max_prompts', v)} />
+            <NumberField label="Maximum Retries per Prompt" desc="0-10, default: 2" value={config.max_retries} min={0} max={10} onChange={(v) => handleChange('max_retries', v)} />
+            <Toggle label="Use Free APIs Only" desc="Use only Groq, HuggingFace, Mock to avoid costs" checked={config.use_free_apis_only} onChange={(v) => handleChange('use_free_apis_only', v)} />
+            {config.updated_at && <p className="text-xs text-muted-foreground pt-3 border-t">Last updated: {new Date(config.updated_at).toLocaleString()}</p>}
+            <div className="flex justify-end pt-3 border-t">
+              <Button onClick={handleSave} disabled={saving}>
+                {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                {saving ? 'Saving...' : 'Save Configuration'}
+              </Button>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config.enabled}
-                onChange={(e) => handleChange('enabled', e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-[#2c2c34] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#3274d9] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[#2c2c34] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3274d9]"></div>
-            </label>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Interval Minutes */}
-          <div>
-            <label className="block text-xs font-medium text-[#8c8c8c] mb-1">
-              Analysis Interval (minutes)
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="1440"
-              value={config.interval_minutes}
-              onChange={(e) => handleChange('interval_minutes', parseInt(e.target.value) || 5)}
-              className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
-            />
-            <p className="text-xs text-[#8c8c8c] mt-1">
-              How often the worker should analyze prompts (1-1440 minutes, default: 5)
-            </p>
-          </div>
-
-          {/* Max Prompts */}
-          <div>
-            <label className="block text-xs font-medium text-[#8c8c8c] mb-1">
-              Maximum Prompts per Cycle
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={config.max_prompts}
-              onChange={(e) => handleChange('max_prompts', parseInt(e.target.value) || 5)}
-              className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
-            />
-            <p className="text-xs text-[#8c8c8c] mt-1">
-              Maximum number of prompts to analyze in each cycle (1-100, default: 5)
-            </p>
-          </div>
-
-          {/* Max Retries */}
-          <div>
-            <label className="block text-xs font-medium text-[#8c8c8c] mb-1">
-              Maximum Retries per Prompt
-            </label>
-            <input
-              type="number"
-              min="0"
-              max="10"
-              value={config.max_retries}
-              onChange={(e) => handleChange('max_retries', parseInt(e.target.value) || 2)}
-              className="w-full px-3 py-2 bg-[#0b0b0f] border border-[#2c2c34] rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9]"
-            />
-            <p className="text-xs text-[#8c8c8c] mt-1">
-              Number of times to retry analyzing a prompt if it fails (0-10, default: 2)
-            </p>
-          </div>
-
-          {/* Use Free APIs Only */}
-          <div className="flex items-center justify-between p-4 bg-[#0b0b0f] rounded border border-[#2c2c34]">
-            <div>
-              <label className="text-sm font-medium text-white">Use Free APIs Only</label>
-              <p className="text-xs text-[#8c8c8c] mt-1">
-                When enabled, the worker will only use free APIs (Groq, HuggingFace, Mock) to avoid costs
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config.use_free_apis_only}
-                onChange={(e) => handleChange('use_free_apis_only', e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-[#2c2c34] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#3274d9] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[#2c2c34] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3274d9]"></div>
-            </label>
-          </div>
-
-          {/* Last Updated */}
-          {config.updated_at && (
-            <div className="pt-4 border-t border-[#2c2c34]">
-              <p className="text-xs text-[#8c8c8c]">
-                Last updated: {new Date(config.updated_at).toLocaleString()}
-              </p>
-            </div>
-          )}
-
-          {/* Save Button */}
-          <div className="flex justify-end pt-4 border-t border-[#2c2c34]">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 bg-[#3274d9] text-white rounded text-sm font-medium hover:bg-[#1f60c4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? 'Saving...' : 'Save Configuration'}
-            </button>
-          </div>
-        </div>
-
-        {/* Info Box */}
-        <div className="bg-[#1f1f23] rounded border border-[#3274d9]/50 p-4">
-          <h3 className="text-xs font-medium text-[#3274d9] mb-2">Important Notes</h3>
-          <ul className="text-xs text-[#d8d9da] space-y-1 list-disc list-inside">
-            <li>Changes to the worker configuration are saved immediately</li>
-            <li>If the worker is running, you may need to restart the server for some changes to take full effect</li>
-            <li>The worker will use the configured settings on the next analysis cycle</li>
-            <li>You can manually trigger an analysis from the Dashboard using the "Analyze Prompts" button</li>
-          </ul>
-        </div>
+        <Card className="border-primary/50">
+          <CardContent className="p-5">
+            <h3 className="text-xs font-medium text-primary mb-2">Important Notes</h3>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>Changes are saved immediately</li>
+              <li>Running worker may require server restart for full effect</li>
+              <li>Settings apply on the next analysis cycle</li>
+              <li>Manual analysis available from Dashboard</li>
+            </ul>
+          </CardContent>
+        </Card>
       </div>
     </AppShell>
   );

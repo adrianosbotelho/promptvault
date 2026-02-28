@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { apiClient, ContextAnalyzeResponse } from '@/lib/api';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { Sparkles, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface SmartInputRef {
   getValue: () => string;
@@ -15,15 +18,13 @@ interface SmartInputProps {
   placeholder?: string;
   className?: string;
   inputRef?: React.RefObject<SmartInputRef | null>;
-  /** Label shown in the collapsed header (dropdown) */
   label?: string;
-  /** Initial expanded state. Default false = always start collapsed */
   defaultExpanded?: boolean;
 }
 
 export default function SmartInput({
   onContextDetected,
-  placeholder = '🔎 Digite ou cole código/descrição...',
+  placeholder = 'Type or paste code/description...',
   className = '',
   inputRef,
   label = 'Smart Input',
@@ -37,180 +38,102 @@ export default function SmartInput({
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const onContextDetectedRef = useRef(onContextDetected);
 
-  // Keep the ref updated with the latest callback
-  useEffect(() => {
-    onContextDetectedRef.current = onContextDetected;
-  }, [onContextDetected]);
+  useEffect(() => { onContextDetectedRef.current = onContextDetected; }, [onContextDetected]);
 
-  // Expose value and context via ref
   useEffect(() => {
     if (inputRef) {
       (inputRef as any).current = {
         getValue: () => value,
         getContext: () => context,
-        clear: () => {
-          setValue('');
-          setContext(null);
-          setError(null);
-        },
+        clear: () => { setValue(''); setContext(null); setError(null); },
       };
     }
   }, [value, context, inputRef]);
 
   useEffect(() => {
-    // Clear previous timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    // If value is empty, clear context
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (!value.trim()) {
-      setContext(null);
-      setError(null);
-      if (onContextDetectedRef.current) {
-        onContextDetectedRef.current({
-          detected_mode: 'unknown',
-          confidence: 0,
-          domain: 'unknown',
-          subdomain: 'unknown',
-          suggested_prompts: [],
-          total_suggestions: 0,
-        });
-      }
+      setContext(null); setError(null);
+      onContextDetectedRef.current?.({ detected_mode: 'unknown', confidence: 0, domain: 'unknown', subdomain: 'unknown', suggested_prompts: [], total_suggestions: 0 });
       return;
     }
-
-    // Set analyzing state
-    setAnalyzing(true);
-    setError(null);
-
-    // Debounce: wait 800ms before analyzing
+    setAnalyzing(true); setError(null);
     debounceTimerRef.current = setTimeout(async () => {
       try {
         const result = await apiClient.analyzeContext(value);
-        setContext(result);
-        setError(null);
-        
-        if (onContextDetectedRef.current) {
-          onContextDetectedRef.current(result);
-        }
+        setContext(result); setError(null);
+        onContextDetectedRef.current?.(result);
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to analyze context';
-        setError(errorMessage);
+        setError(err instanceof Error ? err.message : 'Failed to analyze');
         setContext(null);
-        console.error('Context analysis error:', err);
-      } finally {
-        setAnalyzing(false);
-      }
+      } finally { setAnalyzing(false); }
     }, 800);
+    return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
+  }, [value]);
 
-    // Cleanup function
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [value]); // Removed onContextDetected from dependencies
-
-  const getModeDisplay = () => {
-    if (!context) return null;
-    
-    const modeMap: Record<string, { label: string; color: string }> = {
-      'dev_delphi': { label: 'Delphi', color: 'text-[#3274d9]' },
-      'dev_oracle': { label: 'Oracle', color: 'text-red-400' },
-      'architecture': { label: 'Architecture', color: 'text-purple-400' },
-    };
-    
-    const mode = modeMap[context.detected_mode] || { label: context.detected_mode, color: 'text-[#8c8c8c]' };
-    return mode;
+  const MODE_MAP: Record<string, { label: string; variant: 'blue' | 'red' | 'purple' }> = {
+    dev_delphi: { label: 'Delphi', variant: 'blue' },
+    dev_oracle: { label: 'Oracle', variant: 'red' },
+    architecture: { label: 'Architecture', variant: 'purple' },
   };
-
-  const modeDisplay = getModeDisplay();
+  const modeInfo = context ? MODE_MAP[context.detected_mode] : null;
 
   return (
-    <div className={`relative border border-[#2c2c34] rounded-lg overflow-hidden ${className}`}>
-      {/* Dropdown header – always visible, toggles expanded */}
+    <div className={cn(
+      "border-l-4 border-l-primary rounded-lg overflow-hidden bg-card shadow-[0_4px_14px_rgba(0,0,0,0.3),0_0_0_1px_rgba(47,129,247,0.15)]",
+      className
+    )}>
+      {/* Header */}
       <button
         type="button"
-        onClick={() => setExpanded((prev) => !prev)}
-        className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-[#1f1f23] hover:bg-[#2c2c34] transition-colors text-left"
+        onClick={() => setExpanded(p => !p)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-card hover:bg-accent transition-colors text-left"
       >
-        <span className="flex items-center gap-2 text-sm font-medium text-white">
-          <Sparkles className="w-4 h-4 text-[#3274d9]" />
-          {label}
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Sparkles className="h-4 w-4 text-primary" /> {label}
         </span>
-        <span className="flex items-center gap-2 text-[#8c8c8c]">
+        <span className="flex items-center gap-2 text-muted-foreground">
           {!expanded && analyzing && (
-            <span className="flex items-center gap-1 text-xs">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Analyzing...
-            </span>
+            <span className="flex items-center gap-1 text-xs"><Loader2 className="h-3 w-3 animate-spin" /> Analyzing...</span>
           )}
-          {!expanded && !analyzing && context && context.confidence > 0.3 && modeDisplay && (
-            <span className={`text-xs font-medium ${modeDisplay.color}`}>
-              {modeDisplay.label} ({Math.round(context.confidence * 100)}%)
-            </span>
+          {!expanded && !analyzing && context && context.confidence > 0.3 && modeInfo && (
+            <Badge variant={modeInfo.variant} className="text-[10px]">{modeInfo.label} {Math.round(context.confidence * 100)}%</Badge>
           )}
-          {expanded ? (
-            <ChevronUp className="w-4 h-4 shrink-0" />
-          ) : (
-            <ChevronDown className="w-4 h-4 shrink-0" />
+          {!expanded && !analyzing && !context && (
+            <Badge variant="secondary" className="text-[10px]">Paste code or description</Badge>
           )}
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </span>
       </button>
 
-      {/* Conteúdo expansível */}
+      {/* Content */}
       {expanded && (
-        <div className="p-4 pt-0 border-t border-[#2c2c34]">
+        <div className="px-3 pb-4 pt-0 border-t space-y-3">
           <div className="relative mt-3">
-            <textarea
+            <Textarea
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder={placeholder}
               rows={8}
-              className={`w-full px-4 py-3 bg-[#0b0b0f] border rounded text-sm text-white placeholder-[#8c8c8c] focus:outline-none focus:ring-1 focus:ring-[#3274d9] focus:border-[#3274d9] resize-y font-mono ${
-                context && context.confidence > 0.3
-                  ? `border-${context.detected_mode === 'dev_delphi' ? '[#3274d9]' : context.detected_mode === 'dev_oracle' ? 'red-500' : 'purple-500'}/50`
-                  : 'border-[#2c2c34]'
-              } transition-all`}
+              className="font-mono pr-28"
             />
-
-            {/* Status indicator (when expanded) */}
-            <div className="absolute top-3 right-3 flex items-center gap-2">
+            <div className="absolute top-2 right-2 flex items-center gap-2">
               {analyzing && (
-                <div className="flex items-center gap-1.5 text-xs text-[#8c8c8c]">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Analyzing...</span>
-                </div>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Analyzing...
+                </span>
               )}
-
-              {!analyzing && context && context.confidence > 0.3 && modeDisplay && (
-                <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-[#1f1f23] border border-[#2c2c34] ${modeDisplay.color}`}>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span className="text-xs font-medium">{modeDisplay.label}</span>
-                  <span className="text-xs opacity-70">({Math.round(context.confidence * 100)}%)</span>
-                </div>
+              {!analyzing && context && context.confidence > 0.3 && modeInfo && (
+                <Badge variant={modeInfo.variant} className="text-xs">{modeInfo.label} {Math.round(context.confidence * 100)}%</Badge>
               )}
             </div>
           </div>
-
-          {/* Error message */}
-          {error && (
-            <div className="mt-2 text-xs text-red-400">
-              {error}
-            </div>
-          )}
-
-          {/* Context info */}
+          {error && <p className="text-xs text-destructive">{error}</p>}
           {context && context.confidence > 0.3 && (
-            <div className="mt-2 text-xs text-[#8c8c8c]">
-              Detected: <span className="text-white">{context.domain}</span> / <span className="text-white">{context.subdomain}</span>
-              {context.total_suggestions > 0 && (
-                <span className="ml-2">
-                  • {context.total_suggestions} prompt{context.total_suggestions !== 1 ? 's' : ''} found
-                </span>
-              )}
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Detected: <span className="text-foreground">{context.domain}</span> / <span className="text-foreground">{context.subdomain}</span>
+              {context.total_suggestions > 0 && <span className="ml-2">— {context.total_suggestions} prompt{context.total_suggestions !== 1 ? 's' : ''}</span>}
+            </p>
           )}
         </div>
       )}

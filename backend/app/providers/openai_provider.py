@@ -99,6 +99,7 @@ class OpenAIProvider(LLMProvider):
         """
         result = await self.improve_prompt(prompt)
         return PromptImprovementResult(
+
             improved_prompt=result["improved_prompt"],
             explanation=result["explanation"]
         )
@@ -144,3 +145,18 @@ class OpenAIProvider(LLMProvider):
         
         # Last resort: return content as improved_prompt with generic explanation
         return content, "Prompt improved using OpenAI. Review the changes above."
+
+    async def chat(self, system: str, user: str, max_tokens: int = 4000) -> str:
+        """Generic chat completion (system + user)."""
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.4,
+            max_tokens=max_tokens,
+        )
+        if not response.choices or not response.choices[0].message.content:
+            raise ValueError("OpenAI API returned empty response")
+        return response.choices[0].message.content

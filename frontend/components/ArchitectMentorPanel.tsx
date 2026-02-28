@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { apiClient, MentorSummaryResponse, MentorSummaryItem } from '@/lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Brain, Eye, AlertTriangle, Layers, RefreshCw, ExternalLink } from 'lucide-react';
 
 function formatDate(createdAt: string | undefined): string {
@@ -12,52 +15,33 @@ function formatDate(createdAt: string | undefined): string {
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-    if (diffDays === 0) return 'Hoje';
-    if (diffDays === 1) return 'Ontem';
-    if (diffDays < 7) return `${diffDays}d atrás`;
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-  } catch {
-    return '';
-  }
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
+  } catch { return ''; }
 }
 
-function ItemList({
-  items,
-  emptyLabel,
-  icon: Icon,
-  iconColor,
-}: {
-  items: MentorSummaryItem[];
-  emptyLabel: string;
-  icon: React.ElementType;
-  iconColor: string;
-}) {
-  if (items.length === 0) {
-    return (
-      <p className="text-xs text-[#8c8c8c] italic">{emptyLabel}</p>
-    );
-  }
+function ItemList({ items, emptyLabel, icon: Icon, iconColor }: { items: MentorSummaryItem[]; emptyLabel: string; icon: React.ElementType; iconColor: string }) {
+  if (!items.length) return <p className="text-xs text-muted-foreground italic py-4">{emptyLabel}</p>;
   return (
-    <ul className="space-y-2">
+    <ul className="space-y-3">
       {items.map((item, i) => (
-        <li key={i} className="flex gap-2 text-sm text-[#d8d9da]">
-          <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${iconColor}`} />
+        <li key={i} className="flex gap-2.5 text-sm text-foreground">
+          <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${iconColor}`} />
           <span className="flex-1 min-w-0">
             <span>{item.text}</span>
             {(item.prompt_id != null || item.created_at) && (
-              <span className="text-[#8c8c8c] text-xs ml-1 block mt-1">
+              <span className="text-muted-foreground text-xs ml-1 block mt-1">
                 {item.prompt_id != null && (
-                  <Link
-                    href={`/dashboard/prompts/${item.prompt_id}`}
-                    className="inline-flex items-center gap-1 text-[#3274d9] hover:text-[#5a9aff] hover:underline"
-                  >
-                    <ExternalLink className="w-3 h-3" />
+                  <Link href={`/dashboard/prompts/${item.prompt_id}`} className="inline-flex items-center gap-1 text-primary hover:underline">
+                    <ExternalLink className="h-3 w-3" />
                     {item.prompt_name ? `Prompt: ${item.prompt_name}` : `Prompt #${item.prompt_id}`}
                   </Link>
                 )}
                 {item.created_at && (
                   <span className={item.prompt_id != null ? ' ml-1' : ''}>
-                    {item.prompt_id != null ? ' · ' : ''}{formatDate(item.created_at)}
+                    {item.prompt_id != null ? ' -- ' : ''}{formatDate(item.created_at)}
                   </span>
                 )}
               </span>
@@ -76,100 +60,59 @@ export default function ArchitectMentorPanel() {
 
   const load = useCallback(async () => {
     try {
-      setError(null);
-      setLoading(true);
-      const data = await apiClient.getMentorSummary();
-      setSummary(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar resumo do mentor.');
-    } finally {
-      setLoading(false);
-    }
+      setError(null); setLoading(true);
+      setSummary(await apiClient.getMentorSummary());
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load mentor summary.'); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-  const isEmpty =
-    summary &&
-    summary.recent_observations.length === 0 &&
-    summary.architectural_alerts.length === 0 &&
-    summary.detected_patterns.length === 0;
+  const isEmpty = summary && !summary.recent_observations.length && !summary.architectural_alerts.length && !summary.detected_patterns.length;
 
   return (
-    <div className="bg-[#1f1f23] rounded-lg border border-[#2c2c34] overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-[#2c2c34]">
-        <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-          <div className="p-1.5 bg-amber-500/20 rounded-lg">
-            <Brain className="w-4 h-4 text-amber-400" />
-          </div>
-          Architect Mentor
-        </h2>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="p-1.5 text-[#8c8c8c] hover:text-[#d8d9da] hover:bg-[#2c2c34] rounded transition-colors disabled:opacity-50"
-          title="Atualizar"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
-
-      <div className="p-4 space-y-4">
-        {loading && !summary && (
-          <p className="text-sm text-[#8c8c8c]">Carregando...</p>
-        )}
-        {error && (
-          <p className="text-sm text-red-400">{error}</p>
-        )}
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Brain className="h-4 w-4 text-amber-400" /> Architect Mentor
+        </CardTitle>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={load} disabled={loading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading && !summary && <p className="text-sm text-muted-foreground">Loading...</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {!loading && summary && (
-          <>
-            <div>
-              <h3 className="text-xs font-medium text-[#8c8c8c] uppercase tracking-wide flex items-center gap-1.5 mb-2">
-                <Eye className="w-3.5 h-3.5 text-[#3274d9]" />
-                Observações recentes
-              </h3>
-              <ItemList
-                items={summary.recent_observations}
-                emptyLabel="Nenhuma observação ainda. Execute a análise de prompts para gerar."
-                icon={Eye}
-                iconColor="text-[#3274d9]"
-              />
-            </div>
-            <div>
-              <h3 className="text-xs font-medium text-[#8c8c8c] uppercase tracking-wide flex items-center gap-1.5 mb-2">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                Alertas arquiteturais
-              </h3>
-              <ItemList
-                items={summary.architectural_alerts}
-                emptyLabel="Nenhum alerta no momento."
-                icon={AlertTriangle}
-                iconColor="text-amber-400"
-              />
-            </div>
-            <div>
-              <h3 className="text-xs font-medium text-[#8c8c8c] uppercase tracking-wide flex items-center gap-1.5 mb-2">
-                <Layers className="w-3.5 h-3.5 text-purple-400" />
-                Padrões detectados
-              </h3>
-              <ItemList
-                items={summary.detected_patterns}
-                emptyLabel="Nenhum padrão detectado ainda. Execute a análise de prompts."
-                icon={Layers}
-                iconColor="text-purple-400"
-              />
-            </div>
-            {isEmpty && (
-              <p className="text-xs text-[#8c8c8c] pt-2 border-t border-[#2c2c34]">
-                Use &quot;Analyze Prompts&quot; para o agente gerar observações, alertas e padrões a partir dos seus prompts.
-              </p>
-            )}
-          </>
+          <Tabs defaultValue="observations">
+            <TabsList className="w-full">
+              <TabsTrigger value="observations" className="flex-1 gap-1.5 text-xs">
+                <Eye className="h-3 w-3" /> Observations
+              </TabsTrigger>
+              <TabsTrigger value="alerts" className="flex-1 gap-1.5 text-xs">
+                <AlertTriangle className="h-3 w-3" /> Alerts
+              </TabsTrigger>
+              <TabsTrigger value="patterns" className="flex-1 gap-1.5 text-xs">
+                <Layers className="h-3 w-3" /> Patterns
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="observations">
+              <ItemList items={summary.recent_observations} emptyLabel="No observations yet. Run prompt analysis to generate." icon={Eye} iconColor="text-primary" />
+            </TabsContent>
+            <TabsContent value="alerts">
+              <ItemList items={summary.architectural_alerts} emptyLabel="No alerts at the moment." icon={AlertTriangle} iconColor="text-amber-400" />
+            </TabsContent>
+            <TabsContent value="patterns">
+              <ItemList items={summary.detected_patterns} emptyLabel="No patterns detected. Run prompt analysis." icon={Layers} iconColor="text-purple-400" />
+            </TabsContent>
+          </Tabs>
         )}
-      </div>
-    </div>
+        {isEmpty && (
+          <p className="text-xs text-muted-foreground pt-3 border-t mt-3">
+            Use &quot;Analyze Prompts&quot; to generate observations, alerts and patterns from your prompts.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

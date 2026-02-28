@@ -196,6 +196,8 @@ class PromptResponse(PromptBase):
     created_at: datetime
     updated_at: datetime
     versions: List[PromptVersionResponse] = []
+    is_favorite: bool = False
+    quality_score: int = 0
     
     class Config:
         from_attributes = True
@@ -212,6 +214,8 @@ class PromptListItem(BaseModel):
     updated_at: datetime
     latest_version: Optional[int] = None
     provider: Optional[str] = None  # Provider used to improve the latest version (e.g., 'GroqProvider', 'OpenAIProvider', 'MockLLMProvider')
+    is_favorite: bool = False
+    quality_score: int = 0
     
     class Config:
         from_attributes = True

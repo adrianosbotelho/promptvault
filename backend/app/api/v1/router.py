@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, prompts, agent, insights, admin, context, mentor
+from app.api.v1 import auth, prompts, agent, insights, admin, context, mentor, specialist, profile, templates
 
 api_router = APIRouter()
 
@@ -12,6 +12,9 @@ api_router.include_router(insights.router)
 api_router.include_router(admin.router)
 api_router.include_router(context.router)
 api_router.include_router(mentor.router)
+api_router.include_router(specialist.router)
+api_router.include_router(profile.router)
+api_router.include_router(templates.router)
 
 
 @api_router.get("/health")

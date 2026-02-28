@@ -13,25 +13,15 @@ export default function CollapsibleSection({ title, children, defaultOpen = fals
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="mb-4 border border-[#2c2c34] rounded bg-[#1f1f23]">
+    <div className="mb-4 border rounded-lg bg-card">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[#2c2c34] transition-colors rounded-t"
+        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-accent transition-colors rounded-t-lg"
       >
-        <span className="font-semibold text-white text-sm flex items-center gap-2">
-          {typeof title === 'string' ? title : title}
-        </span>
-        {isOpen ? (
-          <ChevronDown className="w-4 h-4 text-[#8c8c8c]" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-[#8c8c8c]" />
-        )}
+        <span className="font-semibold text-foreground text-sm flex items-center gap-2">{title}</span>
+        {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
       </button>
-      {isOpen && (
-        <div className="px-4 pb-4 border-t border-[#2c2c34]">
-          {children}
-        </div>
-      )}
+      {isOpen && <div className="px-4 pb-4 border-t">{children}</div>}
     </div>
   );
 }

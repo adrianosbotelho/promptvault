@@ -5,7 +5,8 @@ Provides mentor review and summary for the Architect Mentor dashboard panel.
 """
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, get_llm_provider
@@ -24,12 +25,16 @@ router = APIRouter(prefix="/mentor", tags=["mentor"])
     response_model=MentorSummaryResponse,
     status_code=status.HTTP_200_OK,
 )
-async def mentor_summary(db: Session = Depends(get_db)) -> MentorSummaryResponse:
+async def mentor_summary(
+    domain: Optional[str] = Query(default=None, description="Filter by domain: delphi, oracle, arquitetura"),
+    db: Session = Depends(get_db),
+) -> MentorSummaryResponse:
     """
     Get mentor summary for the dashboard: recent observations,
     architectural alerts, and detected patterns from insights.
+    Optionally filter by domain (e.g. delphi, oracle).
     """
-    return get_mentor_summary(db)
+    return get_mentor_summary(db, domain=domain)
 
 
 @router.post(

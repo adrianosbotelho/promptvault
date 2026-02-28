@@ -11,6 +11,9 @@ class PromptCategory(str, Enum):
     DELPHI = "delphi"
     ORACLE = "oracle"
     ARQUITETURA = "arquitetura"
+    PYTHON = "python"
+    SQL = "sql"
+    API = "api"
     
     def __str__(self) -> str:
         return self.value

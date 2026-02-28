@@ -60,3 +60,18 @@ class LLMProvider(ABC):
             Exception: Provider-specific exceptions (API errors, etc.)
         """
         pass
+
+    async def chat(self, system: str, user: str, max_tokens: int = 4000) -> str:
+        """
+        Generic chat completion with system and user messages.
+        Optional for backward compatibility; override for real LLM calls.
+
+        Args:
+            system: System prompt (role/instructions).
+            user: User message content.
+            max_tokens: Maximum tokens to generate.
+
+        Returns:
+            Assistant reply text.
+        """
+        raise NotImplementedError("chat() not implemented by this provider")
