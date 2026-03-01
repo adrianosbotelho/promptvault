@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 
 from app.models.database import Insight, Prompt
 from app.models.insight import InsightListItem
@@ -15,7 +15,7 @@ from app.models.insight import InsightListItem
 
 class InsightService:
     """Service for managing insights."""
-    
+
     @staticmethod
     def list_insights(
         db: Session,
@@ -25,53 +25,48 @@ class InsightService:
         unread_only: bool = False
     ) -> List[InsightListItem]:
         """
-        List insights with optional filtering.
-        
-        Args:
-            db: Database session
-            prompt_id: Optional filter by prompt ID
-            limit: Maximum number of results
-            offset: Number of results to skip
-            unread_only: If True, only return unread insights
-            
-        Returns:
-            List of InsightListItem
+        List insights — uses SQL JSON length functions to avoid loading full JSON blobs.
         """
-        query = db.query(Insight)
-        
-        # Filter by prompt_id if provided
-        if prompt_id:
-            query = query.filter(Insight.prompt_id == prompt_id)
-        
-        # Filter unread only if requested
+        filters = []
+        params: dict = {"limit": limit, "offset": offset}
+
+        if prompt_id is not None:
+            filters.append("prompt_id = :prompt_id")
+            params["prompt_id"] = prompt_id
+
         if unread_only:
-            query = query.filter(Insight.read_at.is_(None))
-        
-        # Order by created_at descending (newest first)
-        query = query.order_by(desc(Insight.created_at))
-        
-        # Apply pagination
-        insights = query.offset(offset).limit(limit).all()
-        
-        # Convert to InsightListItem
-        result = []
-        for insight in insights:
-            improvement_count = len(insight.improvement_ideas) if insight.improvement_ideas else 0
-            pattern_count = len(insight.reusable_patterns) if insight.reusable_patterns else 0
-            warning_count = len(insight.warnings) if insight.warnings else 0
-            
-            result.append(InsightListItem(
-                id=insight.id,
-                prompt_id=insight.prompt_id,
-                created_at=insight.created_at,
-                read_at=insight.read_at,
-                improvement_count=improvement_count,
-                pattern_count=pattern_count,
-                warning_count=warning_count,
-                is_read=insight.read_at is not None
-            ))
-        
-        return result
+            filters.append("read_at IS NULL")
+
+        where_clause = ("WHERE " + " AND ".join(filters)) if filters else ""
+
+        rows = db.execute(text(f"""
+            SELECT
+                id,
+                prompt_id,
+                created_at,
+                read_at,
+                COALESCE(jsonb_array_length(improvement_ideas::jsonb), 0)  AS improvement_count,
+                COALESCE(jsonb_array_length(reusable_patterns::jsonb), 0)  AS pattern_count,
+                COALESCE(jsonb_array_length(warnings::jsonb), 0)           AS warning_count
+            FROM insights
+            {where_clause}
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
+        """), params).fetchall()
+
+        return [
+            InsightListItem(
+                id=row.id,
+                prompt_id=row.prompt_id,
+                created_at=row.created_at,
+                read_at=row.read_at,
+                improvement_count=int(row.improvement_count),
+                pattern_count=int(row.pattern_count),
+                warning_count=int(row.warning_count),
+                is_read=row.read_at is not None,
+            )
+            for row in rows
+        ]
     
     @staticmethod
     def get_insight(db: Session, insight_id: int) -> Insight:

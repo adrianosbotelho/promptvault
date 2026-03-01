@@ -136,11 +136,11 @@ export default function Dashboard() {
   const loadPrompts = async () => {
     try {
       setLoading(true); setError(null);
-      const [promptsData, groupedData] = await Promise.all([
-        apiClient.getPrompts(),
-        apiClient.getGroupedPrompts(),
-      ]);
-      setPrompts(promptsData);
+      // getGroupedPrompts already contains all prompt data — derive flat list from it
+      const groupedData = await apiClient.getGroupedPrompts();
+      const flat = groupedData.by_category.flatMap(c => c.prompts);
+      flat.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      setPrompts(flat);
       setGroupedPrompts(groupedData);
     } catch (err) {
       let msg = 'Falha ao carregar prompts';

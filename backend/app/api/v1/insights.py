@@ -15,6 +15,19 @@ from app.services.insight_service import InsightService
 router = APIRouter(prefix="/insights", tags=["insights"])
 
 
+@router.get("/unread-count", status_code=status.HTTP_200_OK)
+async def get_unread_count(db: Session = Depends(get_db)):
+    """Return only the count of unread insights — lightweight endpoint for the sidebar badge."""
+    try:
+        from sqlalchemy import func, text as sa_text
+        count = db.execute(
+            sa_text("SELECT COUNT(*) FROM insights WHERE read_at IS NULL")
+        ).scalar() or 0
+        return {"count": int(count)}
+    except Exception:
+        return {"count": 0}
+
+
 def handle_db_error(e: Exception) -> HTTPException:
     """Handle database connection errors and return appropriate HTTP response."""
     if isinstance(e, OperationalError):

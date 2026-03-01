@@ -389,6 +389,10 @@ export const apiClient = {
     return apiFetch(`/api/v1/insights/${insightId}`);
   },
 
+  getUnreadInsightCount(): Promise<{ count: number }> {
+    return apiFetch('/api/v1/insights/unread-count');
+  },
+
   markInsightAsRead(insightId: number): Promise<Record<string, unknown>> {
     return apiFetch(`/api/v1/insights/${insightId}/read`, { method: 'POST' });
   },

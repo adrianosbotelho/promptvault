@@ -93,8 +93,24 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
     setIsDark(dark);
     document.documentElement.classList.toggle('light', !dark);
 
-    // Load unread insights count
-    apiClient.getInsights({ unread_only: true }).then(items => setUnreadCount(items.length)).catch(() => {});
+    // Load unread insights count — use cached value first, then refresh in background
+    const CACHE_KEY = 'pv-unread-count';
+    const CACHE_TS_KEY = 'pv-unread-count-ts';
+    const CACHE_TTL = 60_000; // 60 seconds
+
+    const cached = localStorage.getItem(CACHE_KEY);
+    const cachedTs = parseInt(localStorage.getItem(CACHE_TS_KEY) ?? '0', 10);
+    const now = Date.now();
+
+    if (cached !== null && now - cachedTs < CACHE_TTL) {
+      setUnreadCount(parseInt(cached, 10));
+    } else {
+      apiClient.getUnreadInsightCount().then(({ count }) => {
+        setUnreadCount(count);
+        localStorage.setItem(CACHE_KEY, String(count));
+        localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+      }).catch(() => {});
+    }
 
     // Sync agent running state
     setAgentRunning(isAgentRunning());
@@ -219,7 +235,11 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
                   key={item.href}
                   onClick={() => {
                     navigate(item.href);
-                    if (isInsights) setUnreadCount(0);
+                    if (isInsights) {
+                      setUnreadCount(0);
+                      localStorage.removeItem('pv-unread-count');
+                      localStorage.removeItem('pv-unread-count-ts');
+                    }
                   }}
                   className={cn(
                     "w-full flex items-center gap-3 rounded-md text-sm font-medium transition-colors",

@@ -264,13 +264,80 @@ class PromptService:
     
     @staticmethod
     def list_prompts(db: Session) -> List[PromptListItem]:
-        """List all prompts with their latest version number."""
-        prompts = db.query(Prompt).order_by(Prompt.updated_at.desc()).all()
-        
+        """List all prompts with their latest version number — single aggregated query."""
+        # One query: prompts + max version + improved_by of latest version + has_insights flag
+        rows = db.execute(text("""
+            SELECT
+                p.id,
+                p.name,
+                p.description,
+                p.category,
+                p.tags,
+                p.is_favorite,
+                p.created_at,
+                p.updated_at,
+                mv.latest_version,
+                mv.improved_by,
+                CASE WHEN i.prompt_id IS NOT NULL THEN TRUE ELSE FALSE END AS has_insights
+            FROM prompts p
+            LEFT JOIN (
+                SELECT
+                    pv.prompt_id,
+                    MAX(pv.version) AS latest_version,
+                    (
+                        SELECT pv2.improved_by
+                        FROM prompt_versions pv2
+                        WHERE pv2.prompt_id = pv.prompt_id
+                        ORDER BY pv2.version DESC
+                        LIMIT 1
+                    ) AS improved_by
+                FROM prompt_versions pv
+                GROUP BY pv.prompt_id
+            ) mv ON mv.prompt_id = p.id
+            LEFT JOIN (
+                SELECT DISTINCT prompt_id FROM insights
+            ) i ON i.prompt_id = p.id
+            ORDER BY p.updated_at DESC
+        """)).fetchall()
+
         result = []
-        for prompt in prompts:
-            result.append(PromptService._prompt_to_list_item(db, prompt))
-        
+        for row in rows:
+            cat = row.category
+            if cat is not None:
+                from app.core.categories import PromptCategory
+                try:
+                    cat = PromptCategory(cat)
+                except (ValueError, KeyError):
+                    cat = None
+
+            latest_version = row.latest_version
+            has_insights = bool(row.has_insights)
+            score = 0
+            if row.description:
+                score += 20
+            if cat:
+                score += 20
+            if row.tags and len(row.tags) > 0:
+                score += 20
+            if has_insights:
+                score += 20
+            if latest_version and latest_version > 1:
+                score += 20
+
+            result.append(PromptListItem(
+                id=row.id,
+                name=row.name,
+                description=row.description,
+                category=cat,
+                tags=row.tags,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                latest_version=latest_version,
+                provider=row.improved_by,
+                is_favorite=bool(row.is_favorite) if row.is_favorite is not None else False,
+                quality_score=min(score, 100),
+            ))
+
         return result
     
     @staticmethod
@@ -351,14 +418,10 @@ class PromptService:
     def get_grouped_prompts(db: Session) -> GroupedPromptsResponse:
         """
         Get prompts grouped by category and tag.
-        
-        Returns:
-            GroupedPromptsResponse with prompts organized by category and tag
+        Reuses list_prompts to avoid duplicate queries.
         """
-        prompts = db.query(Prompt).order_by(Prompt.updated_at.desc()).all()
-        
-        # Convert all prompts to list items
-        prompt_items = [PromptService._prompt_to_list_item(db, p) for p in prompts]
+        # Reuse the optimised list_prompts — no extra queries
+        prompt_items = PromptService.list_prompts(db)
         
         # Group by category
         by_category_dict = {}
@@ -542,109 +605,103 @@ class PromptService:
     
     @staticmethod
     def _fallback_text_search(db: Session, query: str, top_k: int) -> List[Tuple[Prompt, PromptVersion, float]]:
-        """Text-based search by keyword in name, description, category, tags and content."""
+        """Text-based search — single JOIN query, no N+1."""
         query_lower = query.lower().strip()
         if not query_lower:
             return []
-        prompts = db.query(Prompt).all()
+
+        # Fetch prompts with their latest version content in one query
+        rows = db.execute(text("""
+            SELECT
+                p.id        AS prompt_id,
+                p.name,
+                p.description,
+                p.category::text AS category,
+                p.tags,
+                pv.id       AS version_id,
+                pv.version,
+                pv.content,
+                pv.improved_by,
+                pv.created_at AS version_created_at
+            FROM prompts p
+            JOIN prompt_versions pv ON pv.prompt_id = p.id
+            WHERE pv.version = (
+                SELECT MAX(v2.version) FROM prompt_versions v2 WHERE v2.prompt_id = p.id
+            )
+        """)).fetchall()
+
         results = []
-        for prompt in prompts:
-            latest_version = db.query(func.max(PromptVersion.version)).filter(
-                PromptVersion.prompt_id == prompt.id
-            ).scalar()
-            if not latest_version:
-                continue
-            version = db.query(PromptVersion).filter(
-                PromptVersion.prompt_id == prompt.id,
-                PromptVersion.version == latest_version
-            ).first()
-            if not version:
-                continue
+        for row in rows:
             score = 0.0
-            # Category match (e.g. "delphi" matches category Delphi)
-            if prompt.category is not None:
-                cat_str = (getattr(prompt.category, "value", None) or str(prompt.category)).lower()
-                if query_lower in cat_str:
-                    score += 0.6
-            if prompt.name and query_lower in prompt.name.lower():
+            if row.category and query_lower in row.category.lower():
+                score += 0.6
+            if row.name and query_lower in row.name.lower():
                 score += 0.5
-            if prompt.description and query_lower in prompt.description.lower():
+            if row.description and query_lower in row.description.lower():
                 score += 0.35
-            if version.content and query_lower in version.content.lower():
+            if row.content and query_lower in row.content.lower():
                 score += 0.4
-            if prompt.tags:
-                for tag in prompt.tags:
+            if row.tags:
+                for tag in row.tags:
                     if tag and query_lower in tag.lower():
                         score += 0.3
                         break
             if score > 0:
-                results.append((prompt, version, min(score, 1.0)))
+                prompt = db.query(Prompt).filter(Prompt.id == row.prompt_id).first()
+                version = db.query(PromptVersion).filter(PromptVersion.id == row.version_id).first()
+                if prompt and version:
+                    results.append((prompt, version, min(score, 1.0)))
+
         results.sort(key=lambda x: x[2], reverse=True)
         return results[:top_k]
     
     @staticmethod
     def get_statistics(db: Session) -> dict:
         """
-        Get statistics about prompts.
-        
-        Returns:
-            dict with statistics including:
-            - total_prompts: Total number of prompts
-            - total_by_category: Count of prompts by category
-            - total_analyzed: Number of prompts with insights
-            - total_improved: Number of prompts with more than 1 version
-            - total_versions: Total number of versions
-            - uncategorized_count: Number of prompts without category
+        Get statistics about prompts — single aggregated SQL query.
         """
-        # Total prompts
-        total_prompts = db.query(func.count(Prompt.id)).scalar() or 0
-        
-        # Total versions
-        total_versions = db.query(func.count(PromptVersion.id)).scalar() or 0
-        
-        # Prompts by category
-        category_counts = db.query(
-            Prompt.category,
-            func.count(Prompt.id)
-        ).group_by(Prompt.category).all()
-        
-        total_by_category = {}
+        row = db.execute(text("""
+            SELECT
+                (SELECT COUNT(*) FROM prompts)                                          AS total_prompts,
+                (SELECT COUNT(*) FROM prompt_versions)                                  AS total_versions,
+                (SELECT COUNT(DISTINCT prompt_id) FROM insights)                        AS total_analyzed,
+                (
+                    SELECT COUNT(*) FROM (
+                        SELECT prompt_id FROM prompt_versions
+                        GROUP BY prompt_id HAVING COUNT(*) > 1
+                    ) sub
+                )                                                                       AS total_improved
+        """)).fetchone()
+
+        total_prompts   = int(row.total_prompts)
+        total_versions  = int(row.total_versions)
+        total_analyzed  = int(row.total_analyzed)
+        total_improved  = int(row.total_improved)
+
+        # Category breakdown — separate but single query
+        category_counts = db.execute(text("""
+            SELECT category::text, COUNT(*) AS cnt
+            FROM prompts
+            GROUP BY category
+        """)).fetchall()
+
+        total_by_category: dict = {}
         uncategorized_count = 0
-        
-        for category, count in category_counts:
-            if category is None:
-                uncategorized_count = int(count)
+        for cat_row in category_counts:
+            cat = cat_row.category
+            cnt = int(cat_row.cnt)
+            if cat is None or cat == 'None':
+                uncategorized_count = cnt
             else:
-                # Convert enum to lowercase string for consistency
-                if hasattr(category, 'value'):
-                    category_key = category.value.lower()
-                elif hasattr(category, 'name'):
-                    category_key = category.name.lower()
-                else:
-                    category_key = str(category).lower()
-                total_by_category[category_key] = int(count)
-        
-        # Prompts with insights (analyzed)
-        prompts_with_insights = int(db.query(func.count(func.distinct(Insight.prompt_id))).scalar() or 0)
-        
-        # Prompts with more than 1 version (improved)
-        # Count distinct prompt_ids that have more than 1 version
-        improved_prompts_subquery = db.query(
-            PromptVersion.prompt_id
-        ).group_by(PromptVersion.prompt_id).having(
-            func.count(PromptVersion.id) > 1
-        ).subquery()
-        
-        total_improved = int(db.query(func.count(improved_prompts_subquery.c.prompt_id)).scalar() or 0)
-        
-        # Ensure all values are proper types
+                total_by_category[cat.lower()] = cnt
+
         return {
             "total_prompts": total_prompts,
             "total_by_category": total_by_category,
-            "total_analyzed": prompts_with_insights,
+            "total_analyzed": total_analyzed,
             "total_improved": total_improved,
             "total_versions": total_versions,
-            "uncategorized_count": uncategorized_count
+            "uncategorized_count": uncategorized_count,
         }
 
     @staticmethod
