@@ -199,6 +199,78 @@ export interface PromptTemplate {
   created_at: string;
 }
 
+export interface ConvertResult {
+  markdown: string;
+  filename: string;
+  detected_format: string;
+  char_count: number;
+}
+
+export interface UrlConvertResult {
+  markdown: string;
+  url: string;
+  title?: string | null;
+  char_count: number;
+}
+
+export interface YoutubeConvertResult {
+  markdown: string;
+  video_id: string;
+  url: string;
+  char_count: number;
+}
+
+export interface CategoryDistribution {
+  category: string;
+  count: number;
+}
+
+export interface TagDistribution {
+  tag: string;
+  count: number;
+}
+
+export interface QualityOverTime {
+  date: string;
+  avg_score: number;
+  prompt_count: number;
+}
+
+export interface AnalyticsData {
+  category_distribution: CategoryDistribution[];
+  tag_distribution: TagDistribution[];
+  quality_over_time: QualityOverTime[];
+  total_prompts: number;
+  total_favorites: number;
+  total_versions: number;
+  total_insights: number;
+  avg_quality_score: number;
+  prompts_improved_pct: number;
+}
+
+export interface IntegrationConfig {
+  id: number;
+  integration_type: 'github' | 'webhook' | 'slack' | 'discord' | 'notion';
+  name?: string | null;
+  config: Record<string, string>;
+  enabled: boolean;
+  events?: string[] | null;
+}
+
+export interface IntegrationConfigCreate {
+  integration_type: string;
+  name?: string;
+  config: Record<string, string>;
+  enabled: boolean;
+  events?: string[] | null;
+}
+
+export interface ExportResult {
+  success: boolean;
+  message: string;
+  url?: string | null;
+}
+
 export interface ArchitectProfileUpdate {
   name?: string;
   preferred_patterns?: string[];
@@ -402,5 +474,88 @@ export const apiClient = {
 
   useTemplate(id: number, variables: Record<string, string>): Promise<{ content: string; missing_variables: string[] }> {
     return apiFetch(`/api/v1/templates/${id}/use`, { method: 'POST', body: JSON.stringify({ variables }) });
+  },
+
+  // MarkItDown file conversion
+  async convertFile(file: File): Promise<ConvertResult> {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_URL}/api/v1/convert/file`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (response.status === 401) throw new Error('Unauthorized');
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || `Falha na conversão: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  // Integrations
+  getIntegrations(): Promise<IntegrationConfig[]> {
+    return apiFetch('/api/v1/integrations');
+  },
+
+  createIntegration(data: IntegrationConfigCreate): Promise<IntegrationConfig> {
+    return apiFetch('/api/v1/integrations', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  updateIntegration(id: number, data: IntegrationConfigCreate): Promise<IntegrationConfig> {
+    return apiFetch(`/api/v1/integrations/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+
+  deleteIntegration(id: number): Promise<void> {
+    return apiFetch(`/api/v1/integrations/${id}`, { method: 'DELETE' });
+  },
+
+  githubExport(promptId: number): Promise<ExportResult> {
+    return apiFetch(`/api/v1/integrations/github/export/${promptId}`, { method: 'POST' });
+  },
+
+  githubValidate(token: string, owner: string, repo: string): Promise<ExportResult> {
+    return apiFetch('/api/v1/integrations/github/validate', { method: 'POST', body: JSON.stringify({ token, owner, repo }) });
+  },
+
+  notionExport(promptId: number): Promise<ExportResult> {
+    return apiFetch(`/api/v1/integrations/notion/export/${promptId}`, { method: 'POST' });
+  },
+
+  notionValidate(token: string, database_id: string): Promise<ExportResult> {
+    return apiFetch('/api/v1/integrations/notion/validate', { method: 'POST', body: JSON.stringify({ token, database_id }) });
+  },
+
+  webhookTest(cfgId: number): Promise<ExportResult> {
+    return apiFetch(`/api/v1/integrations/webhook/test/${cfgId}`, { method: 'POST' });
+  },
+
+  // Fork / duplicate a prompt
+  forkPrompt(id: number): Promise<Prompt> {
+    return apiFetch(`/api/v1/prompts/${id}/fork`, { method: 'POST' });
+  },
+
+  // Export collection
+  exportPromptsUrl(format: 'json' | 'zip', favoritesOnly: boolean): string {
+    return `${API_URL}/api/v1/prompts/export?format=${format}&favorites_only=${favoritesOnly}`;
+  },
+
+  // URL to Markdown
+  convertUrl(url: string): Promise<UrlConvertResult> {
+    return apiFetch('/api/v1/convert/url', { method: 'POST', body: JSON.stringify({ url }) });
+  },
+
+  // YouTube transcript to Markdown
+  convertYoutube(url: string, includeTimestamps: boolean = false, language: string = 'pt'): Promise<YoutubeConvertResult> {
+    return apiFetch('/api/v1/convert/youtube', {
+      method: 'POST',
+      body: JSON.stringify({ url, include_timestamps: includeTimestamps, language }),
+    });
+  },
+
+  // Analytics
+  getAnalytics(): Promise<AnalyticsData> {
+    return apiFetch('/api/v1/analytics');
   },
 };

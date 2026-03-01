@@ -11,6 +11,7 @@ import {
   Bot, Play, Settings, Loader2, CheckCircle2, AlertCircle,
   Lightbulb, ExternalLink, Layers, AlertTriangle, Sparkles, Clock,
 } from 'lucide-react';
+import { setAgentRunning } from '@/lib/agentStatus';
 import Link from 'next/link';
 
 function formatDate(dateStr: string): string {
@@ -46,6 +47,7 @@ export default function AgentPage() {
   const handleRunAgent = async () => {
     try {
       setRunning(true); setError(null); setRunResult(null);
+      setAgentRunning(true);
       const res = await apiClient.runAgentWorker();
       setRunResult({
         analyzed_count: res.results?.analyzed_count ?? 0,
@@ -54,7 +56,7 @@ export default function AgentPage() {
       });
       await loadRecentInsights();
     } catch (err) { setError(err instanceof Error ? err.message : 'Falha ao executar o agente'); }
-    finally { setRunning(false); }
+    finally { setRunning(false); setAgentRunning(false); }
   };
 
   const totalIdeas = recentInsights.reduce((s, i) => s + (i.improvement_count ?? 0), 0);

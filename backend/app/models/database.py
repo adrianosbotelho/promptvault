@@ -164,3 +164,18 @@ class PromptTemplate(Base):
     specialization = Column(String(100), nullable=True, comment="Specialist ID used to generate this template")
     category = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class IntegrationConfig(Base):
+    """Stores configuration for external integrations (GitHub, Webhooks, Slack, Notion)."""
+
+    __tablename__ = "integration_configs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    integration_type = Column(String(50), nullable=False, index=True, comment="github | webhook | slack | discord | notion")
+    name = Column(String(255), nullable=True, comment="User-defined label for this config")
+    config = Column(JSON, nullable=False, comment="Integration-specific config (tokens, urls, etc.)")
+    enabled = Column(Boolean, default=True, nullable=False, server_default='true')
+    events = Column(JSON, nullable=True, comment="List of events this integration listens to")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Sparkles, Copy, Check, Loader2, ChevronDown, ChevronUp,
   Save, ExternalLink, Brain, Zap, ThumbsUp, ThumbsDown, Download, LayoutTemplate,
+  History, X,
 } from 'lucide-react';
 
 const SPECIALIZATION_OPTIONS: {
@@ -127,6 +128,16 @@ export default function PromptStudio({ initialIdea, initialSpec, forceOpen }: Pr
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState<number | null>(null);
 
+  // Session history
+  const [sessionHistory, setSessionHistory] = useState<Array<{
+    id: number;
+    idea: string;
+    specialization: string;
+    result: SpecialistBuildResponse;
+    timestamp: Date;
+  }>>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
   // Mentor patterns for selected domain
   const [mentorPatterns, setMentorPatterns] = useState<MentorSummaryItem[]>([]);
   const [loadingPatterns, setLoadingPatterns] = useState(false);
@@ -166,7 +177,14 @@ export default function PromptStudio({ initialIdea, initialSpec, forceOpen }: Pr
     if (!trimmed) { setError('Descreva sua ideia para gerar o prompt.'); return; }
     setError(null); setResult(null); setLoading(true);
     setSavedPromptId(null); setSaveError(null); setAnalyzeDone(false);
-    try { setResult(await apiClient.buildExpertPrompt(trimmed, specialization)); }
+    try {
+      const generated = await apiClient.buildExpertPrompt(trimmed, specialization);
+      setResult(generated);
+      setSessionHistory(prev => [
+        { id: Date.now(), idea: trimmed, specialization, result: generated, timestamp: new Date() },
+        ...prev.slice(0, 9),
+      ]);
+    }
     catch (err) { setError(err instanceof Error ? err.message : 'Falha ao gerar o prompt.'); }
     finally { setLoading(false); }
   };
@@ -334,11 +352,68 @@ export default function PromptStudio({ initialIdea, initialSpec, forceOpen }: Pr
             rows={4}
           />
 
-          <Button onClick={handleGenerate} disabled={loading} className="w-full">
-            {loading
-              ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Gerando...</>
-              : <><Sparkles className="h-4 w-4 mr-1" /> Gerar Prompt Especializado</>}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleGenerate} disabled={loading} className="flex-1">
+              {loading
+                ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Gerando...</>
+                : <><Sparkles className="h-4 w-4 mr-1" /> Gerar Prompt Especializado</>}
+            </Button>
+            {sessionHistory.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHistory(v => !v)}
+                className="px-2.5 shrink-0"
+                title="Histórico da sessão"
+              >
+                <History className="h-4 w-4" />
+                <span className="ml-1 text-xs">{sessionHistory.length}</span>
+              </Button>
+            )}
+          </div>
+
+          {/* Session history panel */}
+          {showHistory && sessionHistory.length > 0 && (
+            <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <History className="h-3.5 w-3.5 text-muted-foreground" /> Histórico da sessão
+                </span>
+                <button onClick={() => setShowHistory(false)} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {sessionHistory.map((entry) => {
+                  const opt = SPECIALIZATION_OPTIONS.find(o => o.value === entry.specialization);
+                  return (
+                    <button
+                      key={entry.id}
+                      onClick={() => {
+                        setIdea(entry.idea);
+                        setSpecialization(entry.specialization);
+                        setResult(entry.result);
+                        setSavedPromptId(null);
+                        setSaveError(null);
+                        setAnalyzeDone(false);
+                        setShowHistory(false);
+                      }}
+                      className="w-full text-left rounded-md border border-border bg-card hover:border-primary/50 px-2.5 py-2 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-foreground truncate flex-1">{entry.idea.slice(0, 60)}{entry.idea.length > 60 ? '...' : ''}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {entry.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{opt?.label ?? entry.specialization}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Clique para restaurar uma geração anterior.</p>
+            </div>
+          )}
 
           {error && (
             <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>

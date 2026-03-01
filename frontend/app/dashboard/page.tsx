@@ -1,8 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiClient, PromptListItem, SemanticSearchResult, GroupedPromptsResponse, PromptStats, ContextAnalyzeResponse } from '@/lib/api';
+import Link from 'next/link';
+import {
+  apiClient,
+  PromptListItem,
+  SemanticSearchResult,
+  GroupedPromptsResponse,
+  PromptStats,
+  InsightListItem,
+} from '@/lib/api';
+import { setAgentRunning } from '@/lib/agentStatus';
 import NewPromptForm from '@/components/NewPromptForm';
 import CategorySection from '@/components/CategorySection';
 import EditPromptModal from '@/components/EditPromptModal';
@@ -10,17 +19,55 @@ import DeletePromptModal from '@/components/DeletePromptModal';
 import AppShell from '@/components/AppShell';
 import PromptCard from '@/components/PromptCard';
 import PromptTable from '@/components/PromptTable';
-import SmartInput from '@/components/SmartInput';
-import PromptStudio from '@/components/PromptStudio';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, RefreshCw, Bot, Grid, LayoutGrid, Table2, FileText, TrendingUp, Sparkles, GitBranch, FolderOpen, Star } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Bot,
+  Grid,
+  LayoutGrid,
+  Table2,
+  FileText,
+  TrendingUp,
+  Sparkles,
+  GitBranch,
+  Star,
+  Lightbulb,
+  ArrowRight,
+  Clock,
+  Loader2,
+  X,
+} from 'lucide-react';
+import CategoryBadge from '@/components/CategoryBadge';
+import { cn } from '@/lib/utils';
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+function formatRelativeDate(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (mins < 2) return 'agora mesmo';
+  if (mins < 60) return `há ${mins} min`;
+  if (hours < 24) return `há ${hours}h`;
+  if (days === 1) return 'ontem';
+  if (days < 7) return `há ${days} dias`;
+  return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
 
 export default function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const [prompts, setPrompts] = useState<PromptListItem[]>([]);
   const [groupedPrompts, setGroupedPrompts] = useState<GroupedPromptsResponse | null>(null);
   const [searchResults, setSearchResults] = useState<SemanticSearchResult[]>([]);
@@ -40,69 +87,67 @@ export default function Dashboard() {
   const [runningWorker, setRunningWorker] = useState(false);
   const [stats, setStats] = useState<PromptStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
-  const [detectedContext, setDetectedContext] = useState<ContextAnalyzeResponse | null>(null);
-  const [newPromptInitialData, setNewPromptInitialData] = useState<{ content?: string; category?: string } | null>(null);
-  const smartInputRef = useRef<{ getValue: () => string; getContext: () => ContextAnalyzeResponse | null; clear: () => void } | null>(null);
+  const [unreadInsights, setUnreadInsights] = useState<InsightListItem[]>([]);
 
   // Studio query params: ?studio=open&idea=...&spec=...
   const studioOpen = searchParams.get('studio') === 'open';
-  const studioIdea = searchParams.get('idea') ?? undefined;
-  const studioSpec = searchParams.get('spec') ?? undefined;
 
-  const handleContextDetected = useCallback((context: ContextAnalyzeResponse) => {
-    setDetectedContext(context);
-  }, []);
+  useEffect(() => {
+    if (studioOpen) router.replace('/dashboard/studio?' + searchParams.toString().replace('studio=open&', '').replace('studio=open', ''));
+  }, [studioOpen, router, searchParams]);
 
-  const handleSmartInputNewPrompt = () => {
-    const value = smartInputRef.current?.getValue() || '';
-    const context = smartInputRef.current?.getContext();
-    let category: string | undefined;
-    if (context && context.confidence > 0.3) {
-      if (context.detected_mode === 'dev_delphi') category = 'delphi';
-      else if (context.detected_mode === 'dev_oracle') category = 'oracle';
-      else if (context.detected_mode === 'architecture') category = 'arquitetura';
-    }
-    setNewPromptInitialData({ content: value, category });
-    setShowNewForm(true);
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
+    await Promise.all([loadPrompts(), loadStats(), loadInsights()]);
   };
-
-  useEffect(() => { loadPrompts(); loadStats(); }, []);
 
   const loadStats = async () => {
     try {
       setLoadingStats(true);
       const data = await apiClient.getPromptStats();
       setStats(data);
-    } catch (err) { console.error('Failed to load statistics:', err); }
+    } catch { /* silent */ }
     finally { setLoadingStats(false); }
+  };
+
+  const loadInsights = async () => {
+    try {
+      const items = await apiClient.getInsights({ unread_only: true, limit: 5 });
+      setUnreadInsights(items);
+    } catch { /* silent */ }
   };
 
   useEffect(() => {
     if (!searchQuery.trim()) { setSearchResults([]); setSearching(false); return; }
-    const timeoutId = setTimeout(async () => {
+    const id = setTimeout(async () => {
       try {
         setSearching(true); setError(null);
         const results = await apiClient.searchPrompts(searchQuery.trim(), 10);
-        setSearchResults(results); setSearching(false);
+        setSearchResults(results);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to search prompts');
-        setSearchResults([]); setSearching(false);
-      }
+        setError(err instanceof Error ? err.message : 'Falha na busca');
+        setSearchResults([]);
+      } finally { setSearching(false); }
     }, 500);
-    return () => clearTimeout(timeoutId);
+    return () => clearTimeout(id);
   }, [searchQuery]);
 
   const loadPrompts = async () => {
     try {
       setLoading(true); setError(null);
-      const [promptsData, groupedData] = await Promise.all([apiClient.getPrompts(), apiClient.getGroupedPrompts()]);
-      setPrompts(promptsData); setGroupedPrompts(groupedData);
+      const [promptsData, groupedData] = await Promise.all([
+        apiClient.getPrompts(),
+        apiClient.getGroupedPrompts(),
+      ]);
+      setPrompts(promptsData);
+      setGroupedPrompts(groupedData);
     } catch (err) {
-      let msg = 'Failed to load prompts';
+      let msg = 'Falha ao carregar prompts';
       if (err instanceof Error) {
         msg = err.message;
         if (msg.includes('Database connection failed') || msg.includes('503'))
-          msg = 'Database connection failed. Check DATABASE_URL and PostgreSQL.';
+          msg = 'Falha na conexão com o banco. Verifique DATABASE_URL e PostgreSQL.';
       }
       setError(msg);
     } finally { setLoading(false); }
@@ -112,28 +157,37 @@ export default function Dashboard() {
     try {
       setImprovingId(id); setError(null); setSuccessMessage(null);
       const result = await apiClient.improvePrompt(id);
-      const latestVersion = result.versions?.length ? result.versions.reduce((l, c) => c.version > l.version ? c : l) : null;
+      const latestVersion = result.versions?.length
+        ? result.versions.reduce((l, c) => c.version > l.version ? c : l)
+        : null;
       const provider = latestVersion?.improved_by || 'Unknown';
-      const name = provider === 'MockLLMProvider' ? 'Mock' : provider === 'GroqProvider' ? 'Groq' : provider === 'OpenAIProvider' ? 'OpenAI' : provider;
-      setSuccessMessage(`Prompt improved using ${name}!`);
+      const name = provider === 'MockLLMProvider' ? 'Mock'
+        : provider === 'GroqProvider' ? 'Groq'
+        : provider === 'OpenAIProvider' ? 'OpenAI'
+        : provider;
+      setSuccessMessage(`Prompt melhorado com ${name}!`);
       setTimeout(() => setSuccessMessage(null), 5000);
       await loadPrompts();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to improve prompt'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Falha ao melhorar prompt'); }
     finally { setImprovingId(null); }
   };
 
-  const handleNewPrompt = () => { setNewPromptInitialData(null); setShowNewForm(true); };
-  const handleFormSuccess = () => { setShowNewForm(false); setNewPromptInitialData(null); smartInputRef.current?.clear(); loadPrompts(); loadStats(); };
-  const handleFormCancel = () => { setShowNewForm(false); };
+  const handleFormSuccess = () => {
+    setShowNewForm(false);
+    loadPrompts();
+    loadStats();
+  };
+
   const handleRunWorker = async () => {
     try {
       setRunningWorker(true); setError(null);
+      setAgentRunning(true);
       await apiClient.runAgentWorker(5);
-      setSuccessMessage('Agent analysis completed!');
+      setSuccessMessage('Análise do Agent concluída!');
       setTimeout(() => setSuccessMessage(null), 5000);
-      await loadPrompts(); await loadStats();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to run agent'); }
-    finally { setRunningWorker(false); }
+      await Promise.all([loadPrompts(), loadStats(), loadInsights()]);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Falha ao executar agent'); }
+    finally { setRunningWorker(false); setAgentRunning(false); }
   };
 
   const isSearchMode = searchQuery.trim().length > 0;
@@ -143,194 +197,285 @@ export default function Dashboard() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedPrompts = displayPrompts.slice(startIndex, endIndex);
+  const recentPrompts = [...prompts].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 4);
 
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, viewMode]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, viewMode, showFavoritesOnly]);
 
-  const STAT_CONFIG = {
-    blue:   { icon: 'text-primary',    bg: 'bg-primary/10',     border: 'border-primary/30' },
-    purple: { icon: 'text-purple-400', bg: 'bg-purple-500/10',  border: 'border-purple-500/30' },
-    green:  { icon: 'text-green-400',  bg: 'bg-green-500/10',   border: 'border-green-500/30' },
-    orange: { icon: 'text-orange-400', bg: 'bg-orange-500/10',  border: 'border-orange-500/30' },
-  };
-
-  const StatCard = ({ icon: Icon, label, value, variant }: { icon: React.ElementType; label: string; value: number; variant: 'blue' | 'purple' | 'green' | 'orange' }) => {
-    const cfg = STAT_CONFIG[variant];
-    return (
-      <Card className={`${cfg.border} shadow-[0_2px_8px_rgba(0,0,0,0.25)]`}>
-        <CardContent className="p-4 flex items-center gap-3">
-          <div className={`p-2.5 rounded-lg ${cfg.bg}`}>
-            <Icon className={`h-5 w-5 ${cfg.icon}`} />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{label}</p>
-            <p className="text-2xl font-bold text-foreground leading-none mt-0.5">{value}</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  const catConfig: Record<string, { color: string; textColor: string }> = {
-    delphi: { color: 'bg-primary/10', textColor: 'text-primary' },
-    oracle: { color: 'bg-red-500/10', textColor: 'text-red-400' },
-    arquitetura: { color: 'bg-purple-500/10', textColor: 'text-purple-400' },
-  };
+  const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <AppShell detectedContext={detectedContext}>
-      <div className="max-w-7xl mx-auto space-y-5">
-        {/* Stats */}
+    <AppShell>
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* ── HEADER ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-foreground">{getGreeting()}</h2>
+            <p className="text-sm text-muted-foreground capitalize">{today}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" onClick={() => setShowNewForm(true)} disabled={showNewForm}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" /> Novo Prompt
+            </Button>
+            <Button variant="secondary" size="sm" asChild>
+              <Link href="/dashboard/studio">
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Abrir Studio
+              </Link>
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleRunWorker} disabled={runningWorker}>
+              {runningWorker
+                ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Analisando...</>
+                : <><Bot className="h-3.5 w-3.5 mr-1.5" /> Executar Agent</>}
+            </Button>
+          </div>
+        </div>
+
+        {/* ── STATS ── */}
         {!loadingStats && stats && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard icon={FileText} label="Prompts" value={stats.total_prompts ?? 0} variant="blue" />
-            <StatCard icon={TrendingUp} label="Analyzed" value={stats.total_analyzed ?? 0} variant="purple" />
-            <StatCard icon={Sparkles} label="Improved" value={stats.total_improved ?? 0} variant="green" />
-            <StatCard icon={GitBranch} label="Versions" value={stats.total_versions ?? 0} variant="orange" />
-          </div>
-        )}
-
-        {/* Category stats */}
-        {stats && Object.keys(stats.total_by_category).length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {Object.entries(stats.total_by_category).map(([cat, count]) => {
-              const cfg = catConfig[cat.toLowerCase()] ?? { color: 'bg-secondary', textColor: 'text-muted-foreground' };
-              return (
-                <Card key={cat} className="shadow-[0_1px_4px_rgba(0,0,0,0.2)]">
-                  <CardContent className="p-3 flex items-center gap-3">
-                    <div className={`p-1.5 rounded-md ${cfg.color}`}>
-                      <FolderOpen className={`h-3.5 w-3.5 ${cfg.textColor}`} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground capitalize">{cat}</p>
-                      <p className="text-lg font-bold text-foreground">{count}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {stats.uncategorized_count > 0 && (
-              <Card className="shadow-[0_1px_4px_rgba(0,0,0,0.2)]">
-                <CardContent className="p-3 flex items-center gap-3">
-                  <div className="p-1.5 rounded-md bg-secondary"><FolderOpen className="h-3.5 w-3.5 text-muted-foreground" /></div>
+            {[
+              { icon: FileText,   label: 'Prompts',    value: stats.total_prompts ?? 0,   color: 'text-primary',      bg: 'bg-primary/10' },
+              { icon: TrendingUp, label: 'Analisados', value: stats.total_analyzed ?? 0,  color: 'text-purple-400',   bg: 'bg-purple-500/10' },
+              { icon: Sparkles,   label: 'Melhorados', value: stats.total_improved ?? 0,  color: 'text-green-400',    bg: 'bg-green-500/10' },
+              { icon: GitBranch,  label: 'Versões',    value: stats.total_versions ?? 0,  color: 'text-orange-400',   bg: 'bg-orange-500/10' },
+            ].map(({ icon: Icon, label, value, color, bg }) => (
+              <Card key={label} className="shadow-sm">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className={`p-2.5 rounded-lg ${bg}`}>
+                    <Icon className={`h-4 w-4 ${color}`} />
+                  </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Uncategorized</p>
-                    <p className="text-lg font-bold text-foreground">{stats.uncategorized_count}</p>
+                    <p className="text-xs text-muted-foreground font-medium">{label}</p>
+                    <p className="text-2xl font-bold text-foreground leading-none mt-0.5">{value}</p>
                   </div>
                 </CardContent>
               </Card>
-            )}
+            ))}
           </div>
         )}
 
-        {/* Prompt Studio */}
-        <PromptStudio
-          initialIdea={studioIdea}
-          initialSpec={studioSpec}
-          forceOpen={studioOpen}
-        />
-
-        {/* Smart Input */}
-        <div>
-          <SmartInput onContextDetected={handleContextDetected} placeholder="Type or paste code/description..." inputRef={smartInputRef} />
-          {detectedContext && detectedContext.confidence > 0.3 && (
-            <div className="mt-2">
-              <Button onClick={handleSmartInputNewPrompt} className="w-full"><Plus className="h-4 w-4 mr-1" /> New Prompt (categorized)</Button>
-            </div>
-          )}
-        </div>
-
-        {/* Search + Actions */}
-        <Card className="border-l-4 border-l-primary shadow-[0_4px_14px_rgba(0,0,0,0.3),0_0_0_1px_rgba(47,129,247,0.15)]">
-          <CardContent className="p-4 space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search prompts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-              {searching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Searching...</span>}
-            </div>
-            {isSearchMode && !searching && (
-              <p className="text-xs text-muted-foreground">
-                {searchResults.length > 0
-                  ? `Found ${searchResults.length} result${searchResults.length !== 1 ? 's' : ''} for "${searchQuery}"`
-                  : `No results for "${searchQuery}"`}
-              </p>
-            )}
-            <div className="flex gap-2 items-center flex-wrap">
-              <Button size="sm" onClick={handleNewPrompt} disabled={showNewForm}><Plus className="h-3.5 w-3.5 mr-1" /> New Prompt</Button>
-              <Button variant="secondary" size="sm" onClick={() => { setSearchQuery(''); setSearchResults([]); loadPrompts(); }} disabled={loading}>
-                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
-              </Button>
-              <Button variant="secondary" size="sm" onClick={handleRunWorker} disabled={runningWorker}>
-                <Bot className="h-3.5 w-3.5 mr-1" /> {runningWorker ? 'Analyzing...' : 'Analyze'}
-              </Button>
-              <Button
-                variant={showFavoritesOnly ? 'default' : 'secondary'}
-                size="sm"
-                onClick={() => setShowFavoritesOnly(p => !p)}
-              >
-                <Star className={`h-3.5 w-3.5 mr-1 ${showFavoritesOnly ? 'fill-current' : ''}`} />
-                Favoritos
-              </Button>
-              {!isSearchMode && (
-                <div className="ml-auto flex gap-0.5 bg-muted rounded-md p-0.5">
-                  {([['grouped', Grid], ['table', Table2], ['grid', LayoutGrid]] as const).map(([mode, Icon]) => (
-                    <Button
-                      key={mode}
-                      variant={viewMode === mode ? 'default' : 'ghost'}
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setViewMode(mode)}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </Button>
-                  ))}
+        {/* ── QUICK ACCESS ── */}
+        {!loading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Insights pendentes */}
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Lightbulb className="h-4 w-4 text-yellow-400" />
+                    Insights pendentes
+                  </CardTitle>
+                  {unreadInsights.length > 0 && (
+                    <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
+                      {unreadInsights.length}
+                    </Badge>
+                  )}
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                {unreadInsights.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Nenhum insight pendente.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {unreadInsights.slice(0, 3).map(insight => (
+                      <li key={insight.id}>
+                        <Link
+                          href={`/dashboard/insights`}
+                          className="flex items-center justify-between group text-xs hover:text-primary transition-colors"
+                        >
+                          <span className="text-muted-foreground group-hover:text-primary truncate">
+                            {insight.improvement_count + insight.pattern_count + insight.warning_count} itens · {formatRelativeDate(insight.created_at)}
+                          </span>
+                          <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-primary flex-shrink-0 ml-2" />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Link
+                  href="/dashboard/insights"
+                  className="mt-3 flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  Ver todos os insights <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
 
-        {/* New Prompt Form */}
+            {/* Prompts recentes */}
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Atividade recente
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                {recentPrompts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Nenhum prompt ainda.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {recentPrompts.map(p => (
+                      <li key={p.id}>
+                        <Link
+                          href={`/dashboard/prompts/${p.id}`}
+                          className="flex items-center gap-2 group"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="text-xs text-foreground group-hover:text-primary transition-colors truncate flex-1">
+                            {p.name}
+                          </span>
+                          {p.category && <CategoryBadge category={p.category} size="sm" />}
+                          <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                            {formatRelativeDate(p.updated_at)}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Link
+                  href="/dashboard/prompts"
+                  className="mt-3 flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  Ver todos os prompts <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ── NEW PROMPT FORM ── */}
         {showNewForm && (
-          <Card className="border-primary/30 shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+          <Card className="border-primary/30 shadow-sm">
             <CardContent className="p-4">
-              <NewPromptForm onSuccess={handleFormSuccess} onCancel={handleFormCancel} initialContent={newPromptInitialData?.content} initialCategory={newPromptInitialData?.category} />
+              <NewPromptForm
+                onSuccess={handleFormSuccess}
+                onCancel={() => setShowNewForm(false)}
+              />
             </CardContent>
           </Card>
         )}
 
-        {/* Messages */}
-        {error && <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
-        {successMessage && <div className="rounded-md border border-green-500/50 bg-green-500/10 px-4 py-3 text-sm text-green-400">{successMessage}</div>}
+        {/* ── MESSAGES ── */}
+        {error && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError(null)}><X className="h-4 w-4" /></button>
+          </div>
+        )}
+        {successMessage && (
+          <div className="rounded-md border border-green-500/50 bg-green-500/10 px-4 py-3 text-sm text-green-400 flex items-center justify-between">
+            <span>{successMessage}</span>
+            <button onClick={() => setSuccessMessage(null)}><X className="h-4 w-4" /></button>
+          </div>
+        )}
 
-        {/* Loading */}
-        {loading && <div className="text-center py-12 text-muted-foreground text-sm">Loading prompts...</div>}
+        {/* ── TOOLBAR ── */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Search */}
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar prompts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-9"
+            />
+            {searching && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground animate-spin" />
+            )}
+            {searchQuery && !searching && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
 
-        {/* Empty */}
+          {/* Favorites toggle */}
+          <Button
+            variant={showFavoritesOnly ? 'default' : 'secondary'}
+            size="sm"
+            className="h-9"
+            onClick={() => setShowFavoritesOnly(p => !p)}
+          >
+            <Star className={cn('h-3.5 w-3.5 mr-1.5', showFavoritesOnly && 'fill-current')} />
+            Favoritos
+          </Button>
+
+          {/* View toggle */}
+          {!isSearchMode && (
+            <div className="flex gap-0.5 bg-muted rounded-md p-0.5">
+              {([['grouped', Grid, 'Agrupado'], ['grid', LayoutGrid, 'Grid'], ['table', Table2, 'Tabela']] as const).map(([mode, Icon, title]) => (
+                <Button
+                  key={mode}
+                  variant={viewMode === mode ? 'default' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8"
+                  title={title}
+                  onClick={() => setViewMode(mode)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Search result count */}
+        {isSearchMode && !searching && (
+          <p className="text-xs text-muted-foreground -mt-3">
+            {searchResults.length > 0
+              ? `${searchResults.length} resultado${searchResults.length !== 1 ? 's' : ''} para "${searchQuery}"`
+              : `Nenhum resultado para "${searchQuery}"`}
+          </p>
+        )}
+
+        {/* ── LOADING ── */}
+        {loading && (
+          <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" /> Carregando prompts...
+          </div>
+        )}
+
+        {/* ── EMPTY ── */}
         {!loading && !isSearchMode && prompts.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground text-sm">No prompts yet. Create your first prompt!</div>
+          <div className="text-center py-16 space-y-3">
+            <FileText className="h-10 w-10 text-muted-foreground mx-auto opacity-40" />
+            <p className="text-sm text-muted-foreground">Nenhum prompt ainda. Crie seu primeiro prompt!</p>
+            <Button size="sm" onClick={() => setShowNewForm(true)}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" /> Criar Prompt
+            </Button>
+          </div>
         )}
         {!loading && isSearchMode && !searching && searchResults.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground text-sm">No results found.</div>
+          <div className="text-center py-16 text-muted-foreground text-sm">Nenhum resultado encontrado.</div>
         )}
 
-        {/* Grouped */}
+        {/* ── GROUPED VIEW ── */}
         {!loading && !isSearchMode && viewMode === 'grouped' && groupedPrompts && (
           <div className="space-y-4">
             {groupedPrompts.by_category.filter(c => c.category !== null).map((category) => (
-              <CategorySection key={category.category || 'uncategorized'} category={category} allPrompts={prompts} onPromptUpdated={loadPrompts} />
+              <CategorySection
+                key={category.category || 'uncategorized'}
+                category={category}
+                allPrompts={prompts}
+                onPromptUpdated={loadPrompts}
+              />
             ))}
             {groupedPrompts.by_category.find(c => c.category === null) && (
-              <CategorySection category={groupedPrompts.by_category.find(c => c.category === null)!} allPrompts={prompts} onPromptUpdated={loadPrompts} />
+              <CategorySection
+                category={groupedPrompts.by_category.find(c => c.category === null)!}
+                allPrompts={prompts}
+                onPromptUpdated={loadPrompts}
+              />
             )}
           </div>
         )}
 
-        {/* Grid */}
+        {/* ── GRID VIEW ── */}
         {!loading && displayPrompts.length > 0 && (isSearchMode || viewMode === 'grid') && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -343,55 +488,89 @@ export default function Dashboard() {
                   onImprove={handleImprove}
                   improving={improvingId === prompt.id}
                   similarity={isSearchMode ? searchResults.find(r => r.prompt.id === prompt.id)?.similarity : undefined}
-                  onFavoriteToggled={(updated) => setPrompts(prev => prev.map(p => p.id === updated.id ? { ...p, is_favorite: updated.is_favorite } : p))}
+                  onFavoriteToggled={(updated) =>
+                    setPrompts(prev => prev.map(p => p.id === updated.id ? { ...p, is_favorite: updated.is_favorite } : p))
+                  }
                 />
               ))}
             </div>
             {!isSearchMode && totalPages > 1 && (
               <div className="flex items-center justify-between pt-2">
                 <span className="text-xs text-muted-foreground">
-                  {startIndex + 1}–{Math.min(endIndex, displayPrompts.length)} of {displayPrompts.length}
+                  {startIndex + 1}–{Math.min(endIndex, displayPrompts.length)} de {displayPrompts.length}
                 </span>
                 <div className="flex gap-1">
-                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Previous</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                    Anterior
+                  </Button>
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let num;
+                    let num: number;
                     if (totalPages <= 5) num = i + 1;
                     else if (currentPage <= 3) num = i + 1;
                     else if (currentPage >= totalPages - 2) num = totalPages - 4 + i;
                     else num = currentPage - 2 + i;
                     return (
-                      <Button key={num} variant={currentPage === num ? 'default' : 'outline'} size="sm" className="h-8 w-8 p-0" onClick={() => setCurrentPage(num)}>
+                      <Button
+                        key={num}
+                        variant={currentPage === num ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(num)}
+                      >
                         {num}
                       </Button>
                     );
                   })}
-                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
+                    Próximo
+                  </Button>
                 </div>
               </div>
             )}
           </>
         )}
 
-        {/* Table */}
+        {/* ── TABLE VIEW ── */}
         {!loading && displayPrompts.length > 0 && viewMode === 'table' && !isSearchMode && (
           <>
-            <PromptTable prompts={paginatedPrompts} onEdit={setEditingPrompt} onDelete={setDeletingPrompt} onImprove={handleImprove} improvingIds={improvingId ? new Set([improvingId]) : new Set()} />
+            <PromptTable
+              prompts={paginatedPrompts}
+              onEdit={setEditingPrompt}
+              onDelete={setDeletingPrompt}
+              onImprove={handleImprove}
+              improvingIds={improvingId ? new Set([improvingId]) : new Set()}
+            />
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-2">
-                <span className="text-xs text-muted-foreground">{startIndex + 1}–{Math.min(endIndex, displayPrompts.length)} of {displayPrompts.length}</span>
+                <span className="text-xs text-muted-foreground">
+                  {startIndex + 1}–{Math.min(endIndex, displayPrompts.length)} de {displayPrompts.length}
+                </span>
                 <div className="flex gap-1">
-                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Previous</Button>
-                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Anterior</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Próximo</Button>
                 </div>
               </div>
             )}
           </>
         )}
 
-        {/* Modals */}
-        {editingPrompt && <EditPromptModal prompt={editingPrompt} isOpen={true} onClose={() => setEditingPrompt(null)} onSuccess={() => { setEditingPrompt(null); loadPrompts(); }} />}
-        {deletingPrompt && <DeletePromptModal prompt={deletingPrompt} isOpen={true} onClose={() => setDeletingPrompt(null)} onSuccess={() => { setDeletingPrompt(null); loadPrompts(); }} />}
+        {/* ── MODALS ── */}
+        {editingPrompt && (
+          <EditPromptModal
+            prompt={editingPrompt}
+            isOpen={true}
+            onClose={() => setEditingPrompt(null)}
+            onSuccess={() => { setEditingPrompt(null); loadPrompts(); }}
+          />
+        )}
+        {deletingPrompt && (
+          <DeletePromptModal
+            prompt={deletingPrompt}
+            isOpen={true}
+            onClose={() => setDeletingPrompt(null)}
+            onSuccess={() => { setDeletingPrompt(null); loadPrompts(); }}
+          />
+        )}
       </div>
     </AppShell>
   );

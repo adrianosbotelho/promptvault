@@ -21,6 +21,19 @@ interface PromptCardProps {
   similarity?: number;
 }
 
+function formatRelativeDate(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (mins < 2) return 'agora';
+  if (mins < 60) return `${mins}min`;
+  if (hours < 24) return `${hours}h`;
+  if (days === 1) return 'ontem';
+  if (days < 7) return `${days}d`;
+  return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
 const TAG_VARIANTS: Record<string, 'blue' | 'red' | 'purple' | 'green' | 'yellow' | 'cyan' | 'secondary'> = {
   implementation: 'blue',
   debug: 'red',
@@ -147,7 +160,7 @@ export default function PromptCard({
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" /> v{prompt.latest_version || 1}
             </span>
-            <span>{new Date(prompt.updated_at).toLocaleDateString()}</span>
+            <span title={new Date(prompt.updated_at).toLocaleString('pt-BR')}>{formatRelativeDate(prompt.updated_at)}</span>
             {prompt.provider && (
               <Badge variant="blue" className="text-[10px] px-1.5 py-0">
                 {prompt.provider === 'MockLLMProvider' ? 'Mock'

@@ -27,7 +27,11 @@ import {
   X,
   User,
   LayoutTemplate,
+  Plug,
+  FileUp,
+  BarChart3,
 } from 'lucide-react';
+import { isAgentRunning, onAgentStatusChange } from '@/lib/agentStatus';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -44,6 +48,9 @@ const NAV_ITEMS = [
   { href: '/dashboard/mentor', label: 'Architect Mentor', icon: Brain },
   { href: '/dashboard/studio', label: 'Prompt Studio', icon: Sparkles },
   { href: '/dashboard/agent', label: 'Agent', icon: Bot },
+  { href: '/dashboard/convert', label: 'Converter', icon: FileUp },
+  { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/dashboard/settings', label: 'Integrações', icon: Plug },
 ];
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -55,6 +62,9 @@ const ROUTE_TITLES: Record<string, string> = {
   '/dashboard/templates': 'Templates',
   '/dashboard/agent': 'Agent',
   '/dashboard/profile': 'Perfil do Arquiteto',
+  '/dashboard/convert': 'Converter para Markdown',
+  '/dashboard/analytics': 'Analytics',
+  '/dashboard/settings': 'Integrações',
   '/dashboard/admin/worker': 'Settings',
 };
 
@@ -63,6 +73,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDark, setIsDark] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [agentRunning, setAgentRunning] = useState(false);
 
   // Global search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -84,6 +95,11 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
 
     // Load unread insights count
     apiClient.getInsights({ unread_only: true }).then(items => setUnreadCount(items.length)).catch(() => {});
+
+    // Sync agent running state
+    setAgentRunning(isAgentRunning());
+    const unsub = onAgentStatusChange(setAgentRunning);
+    return unsub;
   }, []);
 
   // Cmd+K / Ctrl+K listener
@@ -115,7 +131,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
       try {
         setSearchLoading(true);
         const res = await apiClient.searchPrompts(q);
-        setSearchResults(res.map(r => ({ id: r.id, name: r.name, category: r.category })));
+        setSearchResults(res.map(r => ({ id: r.prompt.id, name: r.prompt.name, category: r.prompt.category ?? undefined })));
       } catch { setSearchResults([]); }
       finally { setSearchLoading(false); }
     }, 300);
@@ -154,7 +170,14 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-screen bg-background text-foreground">
+      <div className="flex flex-col h-screen bg-background text-foreground">
+        {/* Agent running top bar */}
+        {agentRunning && (
+          <div className="relative h-1 w-full overflow-hidden bg-primary/20 flex-shrink-0 z-50">
+            <div className="absolute inset-y-0 w-1/3 bg-primary rounded-full animate-[agent-bar_1.4s_ease-in-out_infinite]" />
+          </div>
+        )}
+        <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside
           className={cn(
@@ -183,6 +206,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
               const active = isActive(item.href);
               const Icon = item.icon;
               const isInsights = item.href === '/dashboard/insights';
+              const isAgent = item.href === '/dashboard/agent';
 
               const contextHighlight = detectedContext && detectedContext.confidence > 0.3 && (
                 (detectedContext.detected_mode === 'dev_delphi' && item.href === '/dashboard/prompts') ||
@@ -204,11 +228,21 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
                       ? "bg-sidebar-accent text-foreground"
                       : contextHighlight
                         ? "bg-primary/10 text-primary border-l-2 border-primary"
-                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                        : isAgent && agentRunning
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                   )}
                 >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
+                  <div className="relative flex-shrink-0">
+                    <Icon className="h-4 w-4" />
+                    {isAgent && agentRunning && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary animate-pulse" />
+                    )}
+                  </div>
                   {sidebarOpen && <span className="flex-1 text-left truncate">{item.label}</span>}
+                  {sidebarOpen && isAgent && agentRunning && (
+                    <span className="ml-auto text-[10px] text-primary font-medium animate-pulse">em execução</span>
+                  )}
                   {sidebarOpen && isInsights && unreadCount > 0 && (
                     <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                       {unreadCount > 99 ? '99+' : unreadCount}
@@ -217,7 +251,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
                   {!sidebarOpen && isInsights && unreadCount > 0 && (
                     <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-red-500" />
                   )}
-                  {sidebarOpen && active && !isInsights && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                  {sidebarOpen && active && !isInsights && !isAgent && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                 </button>
               );
 
@@ -228,7 +262,9 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
                       <div className="relative">{btn}</div>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                      {item.label}{isInsights && unreadCount > 0 ? ` (${unreadCount} não lidos)` : ''}
+                      {item.label}
+                      {isInsights && unreadCount > 0 ? ` (${unreadCount} não lidos)` : ''}
+                      {isAgent && agentRunning ? ' — em execução' : ''}
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -352,6 +388,7 @@ export default function AppShell({ children, detectedContext }: AppShellProps) {
             <div className="p-6">{children}</div>
           </main>
         </div>
+        </div>{/* end flex-1 row */}
       </div>
 
       {/* Global Search Modal */}

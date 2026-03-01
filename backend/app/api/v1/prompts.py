@@ -1,5 +1,9 @@
 from typing import List
+import io
+import json
+import zipfile
 from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy import text, func
@@ -341,6 +345,82 @@ async def toggle_favorite(
     try:
         prompt = PromptService.toggle_favorite(db, prompt_id)
         return PromptService._prompt_to_list_item(db, prompt)
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        raise handle_db_error(e)
+
+
+@router.post("/{prompt_id}/fork", response_model=PromptResponse, status_code=status.HTTP_201_CREATED)
+async def fork_prompt(
+    prompt_id: int,
+    db: Session = Depends(get_db)
+):
+    """Create a copy (fork) of an existing prompt."""
+    try:
+        new_prompt = PromptService.fork_prompt(db, prompt_id)
+        prompt = db.query(Prompt).options(joinedload(Prompt.versions)).filter(Prompt.id == new_prompt.id).first()
+        return prompt
+    except HTTPException:
+        raise
+    except (OperationalError, SQLAlchemyError) as e:
+        raise handle_db_error(e)
+    except Exception as e:
+        raise handle_db_error(e)
+
+
+@router.get("/export")
+async def export_prompts(
+    format: str = "json",
+    favorites_only: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Export all prompts (or favorites only) as JSON or ZIP of Markdown files.
+    format: 'json' | 'zip'
+    favorites_only: true | false
+    """
+    try:
+        prompts_data = PromptService.export_prompts(db, favorites_only=favorites_only)
+
+        if format == "zip":
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for p in prompts_data:
+                    safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in p["name"])[:80]
+                    filename = f"{p['id']:04d}_{safe_name}.md"
+                    lines = [
+                        f"# {p['name']}",
+                        "",
+                        f"**Categoria:** {p['category'] or 'Sem categoria'}",
+                        f"**Tags:** {', '.join(p['tags']) if p['tags'] else 'Nenhuma'}",
+                        f"**Quality Score:** {p['quality_score']}",
+                        f"**Versão:** {p['latest_version']}",
+                        f"**Criado em:** {p['created_at']}",
+                        f"**Atualizado em:** {p['updated_at']}",
+                        "",
+                    ]
+                    if p["description"]:
+                        lines += [f"> {p['description']}", ""]
+                    lines += ["## Conteúdo", "", p["content"] or ""]
+                    zf.writestr(filename, "\n".join(lines))
+            buf.seek(0)
+            suffix = "_favoritos" if favorites_only else ""
+            return StreamingResponse(
+                buf,
+                media_type="application/zip",
+                headers={"Content-Disposition": f"attachment; filename=promptvault{suffix}.zip"},
+            )
+        else:
+            buf = io.BytesIO(json.dumps(prompts_data, ensure_ascii=False, indent=2).encode("utf-8"))
+            suffix = "_favoritos" if favorites_only else ""
+            return StreamingResponse(
+                buf,
+                media_type="application/json",
+                headers={"Content-Disposition": f"attachment; filename=promptvault{suffix}.json"},
+            )
     except HTTPException:
         raise
     except (OperationalError, SQLAlchemyError) as e:

@@ -646,3 +646,89 @@ class PromptService:
             "total_versions": total_versions,
             "uncategorized_count": uncategorized_count
         }
+
+    @staticmethod
+    def fork_prompt(db: Session, prompt_id: int) -> Prompt:
+        """Create a copy of an existing prompt with a new name."""
+        original = db.query(Prompt).filter(Prompt.id == prompt_id).first()
+        if not original:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt with id {prompt_id} not found",
+            )
+
+        # Get latest version content
+        latest_version_num = db.execute(
+            text("SELECT MAX(version) FROM prompt_versions WHERE prompt_id = :pid"),
+            {"pid": prompt_id},
+        ).scalar()
+        if not latest_version_num:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Prompt has no versions to fork",
+            )
+        version_row = db.execute(
+            text("SELECT content FROM prompt_versions WHERE prompt_id = :pid AND version = :v"),
+            {"pid": prompt_id, "v": latest_version_num},
+        ).fetchone()
+        content = version_row[0] if version_row else ""
+
+        # Find a unique name
+        base_name = f"Cópia de {original.name}"
+        candidate = base_name
+        counter = 2
+        while db.query(Prompt).filter(Prompt.name == candidate).first():
+            candidate = f"{base_name} ({counter})"
+            counter += 1
+
+        now = datetime.utcnow()
+        new_prompt = Prompt(
+            name=candidate,
+            description=original.description,
+            category=original.category,
+            tags=original.tags,
+            is_favorite=False,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(new_prompt)
+        db.flush()
+
+        db.execute(
+            text("""
+                INSERT INTO prompt_versions (prompt_id, version, content, created_at)
+                VALUES (:prompt_id, 1, :content, :created_at)
+            """),
+            {"prompt_id": new_prompt.id, "content": content, "created_at": now},
+        )
+        db.commit()
+        db.refresh(new_prompt)
+        return new_prompt
+
+    @staticmethod
+    def export_prompts(db: Session, favorites_only: bool = False) -> list:
+        """Return list of dicts with prompt data for export."""
+        from sqlalchemy.orm import joinedload
+        query = db.query(Prompt).options(joinedload(Prompt.versions))
+        if favorites_only:
+            query = query.filter(Prompt.is_favorite == True)
+        prompts = query.order_by(Prompt.updated_at.desc()).all()
+
+        result = []
+        for p in prompts:
+            latest = max(p.versions, key=lambda v: v.version) if p.versions else None
+            cat = getattr(p.category, "value", None) or (str(p.category) if p.category else None)
+            result.append({
+                "id": p.id,
+                "name": p.name,
+                "description": p.description,
+                "category": cat,
+                "tags": p.tags or [],
+                "is_favorite": p.is_favorite,
+                "quality_score": PromptService.calculate_quality_score(p),
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                "latest_version": latest.version if latest else None,
+                "content": latest.content if latest else "",
+            })
+        return result

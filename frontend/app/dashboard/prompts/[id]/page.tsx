@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Copy, Check, Sparkles, Search, Loader2, ArrowLeft, Edit2, Trash2,
   GitBranch, Wand2, Download, Brain, AlertTriangle, Layers, ChevronDown, ChevronUp,
-  Lightbulb, Eye,
+  Lightbulb, Eye, GitFork,
 } from 'lucide-react';
 
 // ── Diff helper ──────────────────────────────────────────────────────────────
@@ -130,6 +130,17 @@ export default function PromptDetailPage() {
     URL.revokeObjectURL(url);
   };
 
+  const [forking, setForking] = useState(false);
+  const handleFork = async () => {
+    try {
+      setForking(true); setError(null);
+      const forked = await apiClient.forkPrompt(promptId);
+      setSuccessMessage(`Prompt duplicado como "${forked.name}"!`);
+      setTimeout(() => { setSuccessMessage(null); router.push(`/dashboard/prompts/${forked.id}`); }, 1500);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Falha ao duplicar prompt'); }
+    finally { setForking(false); }
+  };
+
   const getLatestVersion = (versions: PromptVersion[]): PromptVersion | null =>
     versions.length ? versions.reduce((l, c) => c.version > l.version ? c : l) : null;
 
@@ -203,7 +214,10 @@ export default function PromptDetailPage() {
                   {prompt.tags?.map((t, i) => <Badge key={i} variant="secondary">{t}</Badge>)}
                 </div>
               </div>
-              <div className="flex gap-1.5 ml-4 shrink-0">
+              <div className="flex gap-1.5 ml-4 shrink-0 flex-wrap">
+                <Button variant="outline" size="sm" onClick={handleFork} disabled={forking}>
+                  {forking ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <GitFork className="h-3.5 w-3.5 mr-1" />} Duplicar
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => setEditingPrompt(true)}><Edit2 className="h-3.5 w-3.5 mr-1" /> Editar</Button>
                 <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeletingPrompt(true)}><Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir</Button>
               </div>
@@ -424,7 +438,7 @@ export default function PromptDetailPage() {
                                       {patterns.map((p, i) => (
                                         <div key={i} className="text-xs text-foreground border rounded p-2">
                                           <span className="font-medium">{String(p.name ?? '')}</span>
-                                          {p.description && <p className="text-muted-foreground mt-0.5">{String(p.description)}</p>}
+                                          {p.description != null && <p className="text-muted-foreground mt-0.5">{String(p.description)}</p>}
                                         </div>
                                       ))}
                                     </div>
